@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/kv_app.dir/main.cpp.o -o kv_app  libkv_lib.a 
