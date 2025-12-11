@@ -1,3 +1,47 @@
+# 项目说明
+
+## 目录结构
+
+- `src/`：项目源代码
+- `docs/`：项目文档（包含依赖安装与开发指南）
+- `test/`：单元测试（基于 Google Test）
+
+## 依赖说明
+
+本项目依赖以下公共组件：
+- `gtest`（Google Test） — 单元测试框架
+- `gflags` — 命令行参数解析
+- `protobuf`（Protocol Buffers） — 消息定义与代码生成
+- `grpc` — RPC 框架
+
+这些依赖的安装方法见：`docs/DEPENDENCIES.md`。
+
+## 快速构建示例（CMake）
+
+```bash
+mkdir -p build && cd build
+cmake ..
+cmake --build .
+```
+
+建议在 `CMakeLists.txt` 中使用 `find_package` 查找并链接依赖，例如：
+
+```cmake
+find_package(gflags REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(gRPC REQUIRED)
+find_package(GTest REQUIRED)
+
+add_executable(my_app src/main.cpp)
+target_link_libraries(my_app PRIVATE gflags::gflags protobuf::libprotobuf gRPC::grpc++)
+
+add_executable(my_test test/test_main.cpp)
+target_link_libraries(my_test PRIVATE GTest::gtest GTest::gtest_main)
+```
+
+## 贡献
+
+欢迎提交 PR 或 issue。详见 `docs/` 下的贡献指南（如有）。
 # KV 存储系统
 
 这是一个用 C++ 实现的轻量级键值（Key-Value）存储系统，使用 CMake 构建。目标是提供简单、可靠且高性能的本地持久化 KV 存储，适合作为学习项目或嵌入式/服务端组件的基础。
