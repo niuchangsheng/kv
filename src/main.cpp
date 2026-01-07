@@ -22,22 +22,9 @@ int main() {
         std::cout << "age: " << value << std::endl;
     }
 
-    // Check if key exists
-    if (kv.exists("city")) {
-        std::cout << "city key exists" << std::endl;
-    }
-
-    // Get all keys
-    auto all_keys = kv.keys();
-    std::cout << "All keys: ";
-    for (const auto& key : all_keys) {
-        std::cout << key << " ";
-    }
-    std::cout << std::endl;
-
-    // Remove a key
-    if (kv.remove("age")) {
-        std::cout << "Removed 'age' key" << std::endl;
+    // Delete a key
+    if (kv.Delete("age")) {
+        std::cout << "Deleted 'age' key" << std::endl;
     }
 
     std::cout << "KV Engine test completed!" << std::endl;

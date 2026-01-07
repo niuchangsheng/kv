@@ -3,8 +3,6 @@
 
 #include <string>
 #include <unordered_map>
-#include <vector>
-#include <memory>
 
 class KVEngine {
 public:
@@ -18,16 +16,7 @@ public:
     bool get(const std::string& key, std::string& value);
 
     // Delete a key
-    bool remove(const std::string& key);
-
-    // Check if key exists
-    bool exists(const std::string& key);
-
-    // Get all keys
-    std::vector<std::string> keys();
-
-    // Clear all key-value pairs
-    void clear();
+    bool Delete(const std::string& key);
 
 private:
     std::unordered_map<std::string, std::string> data_store;

@@ -22,7 +22,7 @@ bool KVEngine::get(const std::string& key, std::string& value) {
     return false;
 }
 
-bool KVEngine::remove(const std::string& key) {
+bool KVEngine::Delete(const std::string& key) {
     if (data_store.find(key) != data_store.end()) {
         data_store.erase(key);
         return true;
@@ -30,18 +30,3 @@ bool KVEngine::remove(const std::string& key) {
     return false;
 }
 
-bool KVEngine::exists(const std::string& key) {
-    return data_store.find(key) != data_store.end();
-}
-
-std::vector<std::string> KVEngine::keys() {
-    std::vector<std::string> result;
-    for (const auto& pair : data_store) {
-        result.push_back(pair.first);
-    }
-    return result;
-}
-
-void KVEngine::clear() {
-    data_store.clear();
-}

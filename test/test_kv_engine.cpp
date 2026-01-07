@@ -24,8 +24,8 @@ void test_put_get() {
     std::cout << "Put/get test passed!" << std::endl;
 }
 
-void test_remove() {
-    std::cout << "Testing remove..." << std::endl;
+void test_delete() {
+    std::cout << "Testing delete..." << std::endl;
     KVEngine kv;
     
     // Add a key
@@ -37,102 +37,19 @@ void test_remove() {
     assert(exists == true);
     assert(value == "value1");
     
-    // Remove the key
-    bool removed = kv.remove("key1");
-    assert(removed == true);
+    // Delete the key
+    bool deleted = kv.Delete("key1");
+    assert(deleted == true);
     
     // Verify it's gone
     exists = kv.get("key1", value);
     assert(exists == false);
     
-    // Try to remove non-existent key
-    removed = kv.remove("nonexistent");
-    assert(removed == false);
+    // Try to delete non-existent key
+    deleted = kv.Delete("nonexistent");
+    assert(deleted == false);
     
-    std::cout << "Remove test passed!" << std::endl;
-}
-
-void test_exists() {
-    std::cout << "Testing exists..." << std::endl;
-    KVEngine kv;
-    
-    // Test non-existent key
-    bool result = kv.exists("nonexistent");
-    assert(result == false);
-    
-    // Add a key
-    kv.put("key1", "value1");
-    
-    // Test existing key
-    result = kv.exists("key1");
-    assert(result == true);
-    
-    // Remove the key
-    kv.remove("key1");
-    
-    // Test that it no longer exists
-    result = kv.exists("key1");
-    assert(result == false);
-    
-    std::cout << "Exists test passed!" << std::endl;
-}
-
-void test_keys() {
-    std::cout << "Testing keys..." << std::endl;
-    KVEngine kv;
-    
-    // Test empty store
-    std::vector<std::string> keys = kv.keys();
-    assert(keys.size() == 0);
-    
-    // Add some keys
-    kv.put("key1", "value1");
-    kv.put("key2", "value2");
-    kv.put("key3", "value3");
-    
-    // Get all keys
-    keys = kv.keys();
-    assert(keys.size() == 3);
-    
-    // Verify all keys are present (order doesn't matter for this test)
-    bool found_key1 = false, found_key2 = false, found_key3 = false;
-    for (const auto& key : keys) {
-        if (key == "key1") found_key1 = true;
-        if (key == "key2") found_key2 = true;
-        if (key == "key3") found_key3 = true;
-    }
-    
-    assert(found_key1);
-    assert(found_key2);
-    assert(found_key3);
-    
-    std::cout << "Keys test passed!" << std::endl;
-}
-
-void test_clear() {
-    std::cout << "Testing clear..." << std::endl;
-    KVEngine kv;
-    
-    // Add some keys
-    kv.put("key1", "value1");
-    kv.put("key2", "value2");
-    
-    // Verify they exist
-    assert(kv.exists("key1"));
-    assert(kv.exists("key2"));
-    
-    // Clear the store
-    kv.clear();
-    
-    // Verify they're gone
-    assert(!kv.exists("key1"));
-    assert(!kv.exists("key2"));
-    
-    // Verify keys list is empty
-    std::vector<std::string> keys = kv.keys();
-    assert(keys.size() == 0);
-    
-    std::cout << "Clear test passed!" << std::endl;
+    std::cout << "Delete test passed!" << std::endl;
 }
 
 void test_multiple_values() {
@@ -164,10 +81,7 @@ int main() {
     std::cout << "Running KV Engine tests..." << std::endl;
     
     test_put_get();
-    test_remove();
-    test_exists();
-    test_keys();
-    test_clear();
+    test_delete();
     test_multiple_values();
     
     std::cout << "All tests passed!" << std::endl;
