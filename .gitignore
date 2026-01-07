@@ -1,3 +1,43 @@
-Since the only file change is the addition of `.gitignore` itself and there are no other file changes provided in the list, there's no specific content to generate for the .gitignore file based on the change list. However, I need to consider that the current .gitignore content is empty, and no files that should be ignored were specified in the changes.
+```
+# Build artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+*.out
 
-Output: (empty - no content to output)
+# CMake build directories
+build/
+cmake-build-*/
+
+# Dependencies
+venv/
+.venv/
+__pycache__/
+*.egg-info/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# System
+.DS_Store
+Thumbs.db
+```
