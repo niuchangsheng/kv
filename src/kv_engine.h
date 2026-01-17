@@ -16,7 +16,7 @@ public:
     bool get(const std::string& key, std::string& value);
 
     // Delete a key
-    bool Delete(const std::string& key);
+    bool delete(const std::string& key);
 
 private:
     std::unordered_map<std::string, std::string> data_store;
