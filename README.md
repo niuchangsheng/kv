@@ -11,6 +11,87 @@
 - **配置选项**：丰富的Options类用于控制读写行为
 - **C++17标准**：使用现代C++特性开发
 
+## 技术栈
+
+本项目基于以下开源技术栈构建：
+
+### 核心依赖
+
+- **C++17**: 现代C++标准，提供智能指针、RAII等特性
+- **CMake**: 跨平台构建系统，支持复杂项目管理
+
+### 测试框架
+
+- **Google Test (gtest)**: C++单元测试框架，提供丰富的断言和测试组织功能
+
+### 网络通信 (预留扩展)
+
+- **gRPC**: 高效的远程过程调用框架，支持多种编程语言
+- **Protocol Buffers (protobuf)**: 结构化数据的序列化框架，提供跨语言数据交换
+
+### 工具库
+
+- **gflags**: 命令行参数解析库，提供灵活的参数配置
+- **glog**: Google日志库，提供结构化日志记录和性能监控
+
+### 安装依赖
+
+#### Ubuntu/Debian
+
+```bash
+# 安装基础构建工具
+sudo apt update
+sudo apt install -y build-essential cmake
+
+# 安装Google工具链
+sudo apt install -y libgtest-dev libgflags-dev libgoogle-glog-dev
+
+# 安装gRPC和Protocol Buffers
+sudo apt install -y libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+```
+
+#### macOS (使用Homebrew)
+
+```bash
+# 安装基础工具
+brew install cmake
+
+# 安装Google工具链
+brew install googletest gflags glog
+
+# 安装gRPC和Protocol Buffers
+brew install grpc protobuf
+```
+
+#### 手动编译安装 (推荐用于最新版本)
+
+```bash
+# Google Test
+git clone https://github.com/google/googletest.git
+cd googletest && mkdir build && cd build
+cmake .. && make -j$(nproc) && sudo make install
+
+# gflags
+git clone https://github.com/gflags/gflags.git
+cd gflags && mkdir build && cd build
+cmake .. && make -j$(nproc) && sudo make install
+
+# glog
+git clone https://github.com/google/glog.git
+cd glog && mkdir build && cd build
+cmake .. && make -j$(nproc) && sudo make install
+
+# Protocol Buffers
+git clone https://github.com/protocolbuffers/protobuf.git
+cd protobuf && mkdir build && cd build
+cmake .. -Dprotobuf_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
+
+# gRPC
+git clone https://github.com/grpc/grpc.git
+cd grpc && mkdir build && cd build
+cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
+```
+
 ## 项目结构
 
 ```
@@ -26,9 +107,14 @@
 │   ├── options.h/cpp      # 配置选项
 │   ├── iterator.h/cpp     # 迭代器接口
 │   ├── write_batch.h/cpp  # 批量操作
-│   ├── db_iterator.h/cpp  # 迭代器实现
-│   └── main.cpp           # 测试程序
-└── test/                  # 单元测试
+│   └── db_iterator.h/cpp  # 迭代器实现
+├── test/                  # 单元测试
+│   ├── CMakeLists.txt     # 测试构建配置
+│   └── test_kv_engine.cpp # 单元测试代码
+└── build/                 # 构建输出目录
+    └── bin/               # 二进制文件目录
+        ├── libkv_engine_lib.a  # 静态库
+        └── test_kv_engine      # 测试可执行文件
 ```
 
 ## 构建（CMake）
