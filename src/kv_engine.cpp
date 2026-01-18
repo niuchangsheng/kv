@@ -1,32 +1,68 @@
 #include "kv_engine.h"
+#include "db_iterator.h"
+#include <iostream>
 
-KVEngine::KVEngine() {
-    // Constructor implementation
+DB::DB() {}
+
+DB::~DB() {}
+
+Status DB::Open(const Options& options, const std::string& name, DB** dbptr) {
+    *dbptr = nullptr;
+
+    // For simplicity, we'll create an in-memory database
+    // In a real implementation, this would open/create files on disk
+    DB* db = new DB();
+
+    // If error_if_exists is true and we "detect" an existing database,
+    // return an error. For our in-memory implementation, we'll just
+    // assume the database doesn't exist yet.
+
+    *dbptr = db;
+    return Status::OK();
 }
 
-KVEngine::~KVEngine() {
-    // Destructor implementation
+Status DB::Put(const WriteOptions& options, const std::string& key, const std::string& value) {
+    data_store_[key] = value;
+    return Status::OK();
 }
 
-bool KVEngine::put(const std::string& key, const std::string& value) {
-    data_store[key] = value;
-    return true;
-}
-
-bool KVEngine::get(const std::string& key, std::string& value) {
-    auto it = data_store.find(key);
-    if (it != data_store.end()) {
-        value = it->second;
-        return true;
+Status DB::Get(const ReadOptions& options, const std::string& key, std::string* value) {
+    auto it = data_store_.find(key);
+    if (it != data_store_.end()) {
+        *value = it->second;
+        return Status::OK();
     }
-    return false;
+    return Status::NotFound();
 }
 
-bool KVEngine::Delete(const std::string& key) {
-    if (data_store.find(key) != data_store.end()) {
-        data_store.erase(key);
-        return true;
-    }
-    return false;
+Status DB::Delete(const WriteOptions& options, const std::string& key) {
+    data_store_.erase(key);
+    return Status::OK();
 }
 
+Status DB::Write(const WriteOptions& options, WriteBatch* updates) {
+    class BatchHandler : public WriteBatch::Handler {
+    public:
+        BatchHandler(DB* db) : db_(db) {}
+        virtual void Put(const std::string& key, const std::string& value) override {
+            db_->data_store_[key] = value;
+        }
+        virtual void Delete(const std::string& key) override {
+            db_->data_store_.erase(key);
+        }
+    private:
+        DB* db_;
+    };
+
+    BatchHandler handler(this);
+    return updates->Iterate(&handler);
+}
+
+Iterator* DB::NewIterator(const ReadOptions& options) {
+    return new DBIterator(data_store_);
+}
+
+Status DestroyDB(const std::string& name, const Options& options) {
+    // For our in-memory implementation, there's nothing to destroy
+    return Status::OK();
+}

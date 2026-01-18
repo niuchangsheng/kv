@@ -1,132 +1,159 @@
-# 项目说明
+# LevelDB风格KV存储引擎
 
-## 目录结构
-
-- `src/`：项目源代码
-- `docs/`：项目文档（包含依赖安装与开发指南）
-- `test/`：单元测试（基于 Google Test）
-
-## 依赖说明
-
-本项目依赖以下公共组件：
-- `gtest`（Google Test） — 单元测试框架
-- `gflags` — 命令行参数解析
-- `protobuf`（Protocol Buffers） — 消息定义与代码生成
-- `grpc` — RPC 框架
-
-这些依赖的安装方法见：`docs/DEPENDENCIES.md`。
-
-## 快速构建示例（CMake）
-
-```bash
-mkdir -p build && cd build
-cmake ..
-cmake --build .
-```
-
-建议在 `CMakeLists.txt` 中使用 `find_package` 查找并链接依赖，例如：
-
-```cmake
-find_package(gflags REQUIRED)
-find_package(Protobuf REQUIRED)
-find_package(gRPC REQUIRED)
-find_package(GTest REQUIRED)
-
-add_executable(my_app src/main.cpp)
-target_link_libraries(my_app PRIVATE gflags::gflags protobuf::libprotobuf gRPC::grpc++)
-
-add_executable(my_test test/test_main.cpp)
-target_link_libraries(my_test PRIVATE GTest::gtest GTest::gtest_main)
-```
-
-## 贡献
-
-欢迎提交 PR 或 issue。详见 `docs/` 下的贡献指南（如有）。
-# KV 存储系统
-
-这是一个用 C++ 实现的轻量级键值（Key-Value）存储系统，使用 CMake 构建。目标是提供简单、可靠且高性能的本地持久化 KV 存储，适合作为学习项目或嵌入式/服务端组件的基础。
+这是一个用 C++ 实现的轻量级键值（Key-Value）存储引擎，采用LevelDB的接口设计风格。提供简单、可靠的内存KV存储功能，支持批量操作和数据迭代。
 
 ## 特性
 
-- 简单的 C++ API：`put/get/delete` 等基本操作
-- 持久化到磁盘（可扩展为 WAL + 数据文件）
-- 内存索引以加速读取
-- 基本并发读写支持（可扩展为更复杂的并发控制）
+- **LevelDB兼容接口**：采用LevelDB的标准API设计
+- **Status错误处理**：使用Status对象进行错误处理和状态反馈
+- **批量操作支持**：WriteBatch支持原子性批量写入
+- **数据迭代**：Iterator接口支持有序数据遍历
+- **配置选项**：丰富的Options类用于控制读写行为
+- **C++17标准**：使用现代C++特性开发
 
-## 项目结构（示例）
+## 项目结构
 
-- `CMakeLists.txt` - 构建入口
-- `src/` - 源代码
-- `include/` - 头文件
-- `tests/` - 单元测试
-- `examples/` - 使用示例
-
-（实际结构请以仓库内容为准）
+```
+├── CMakeLists.txt          # 主构建文件
+├── README.md              # 项目说明
+├── docs/                  # 项目文档
+│   └── README.md          # 详细设计文档
+├── src/                   # 源代码
+│   ├── CMakeLists.txt     # 源码构建配置
+│   ├── kv_engine.h        # 主接口头文件
+│   ├── kv_engine.cpp      # 主接口实现
+│   ├── status.h/cpp       # 状态管理
+│   ├── options.h/cpp      # 配置选项
+│   ├── iterator.h/cpp     # 迭代器接口
+│   ├── write_batch.h/cpp  # 批量操作
+│   ├── db_iterator.h/cpp  # 迭代器实现
+│   └── main.cpp           # 测试程序
+└── test/                  # 单元测试
+```
 
 ## 构建（CMake）
 
-在 Linux / WSL 或类 Unix 系统：
+### Linux / macOS
 
 ```bash
 mkdir -p build
 cd build
 cmake ..
-cmake --build . --config Release
+cmake --build .
 ```
 
-在 Windows（使用 Visual Studio）：
+### Windows (Visual Studio)
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022"
 cmake --build build --config Release
 ```
 
-如果项目提供 `install` 规则，可运行：
-
-```bash
-cmake --install build --prefix ./install
-```
-
-## 快速使用示例（伪代码）
-
-以下为示例 API 用法，实际函数名/命名空间请参照代码实现：
+## 快速使用示例
 
 ```cpp
-#include "kv_store.h"
+#include "kv_engine.h"
 
 int main() {
-    KVStore store("./data");
-    store.put("user:1", "{\"name\":\"Alice\"}");
-    auto val = store.get("user:1");
-    if (val) std::cout << *val << std::endl;
-    store.del("user:1");
-    store.close();
+    // 打开数据库
+    Options options;
+    options.create_if_missing = true;
+    DB* db;
+    Status status = DB::Open(options, "/tmp/testdb", &db);
+
+    if (!status.ok()) {
+        std::cerr << "无法打开数据库: " << status.ToString() << std::endl;
+        return 1;
+    }
+
+    // 写入数据
+    WriteOptions write_options;
+    status = db->Put(write_options, "name", "Alice");
+    status = db->Put(write_options, "age", "25");
+
+    // 读取数据
+    ReadOptions read_options;
+    std::string value;
+    status = db->Get(read_options, "name", &value);
+    if (status.ok()) {
+        std::cout << "name: " << value << std::endl;
+    }
+
+    // 批量操作
+    WriteBatch batch;
+    batch.Put("city", "Beijing");
+    batch.Delete("age");
+    status = db->Write(write_options, &batch);
+
+    // 数据迭代
+    Iterator* it = db->NewIterator(read_options);
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+        std::cout << it->key() << ": " << it->value() << std::endl;
+    }
+    delete it;
+
+    delete db;
     return 0;
 }
 ```
 
-## 设计要点（建议）
+## API接口
 
-- 存储格式：可采用简单的日志结构（WAL）+ 数据文件，周期性合并(compaction)
-- 索引：将键映射到文件偏移量的内存哈希表，加快读取
-- 原子性：写入先写 WAL，确保崩溃恢复
-- 并发：读多写少场景下使用读写锁；需要更高吞吐可引入 sharding 或 lock-free 结构
+### 核心类
+
+- **DB**: 主数据库类，提供基本的KV操作
+- **Status**: 操作状态和错误信息
+- **Options/ReadOptions/WriteOptions**: 配置选项
+- **WriteBatch**: 批量操作
+- **Iterator**: 数据迭代器
+
+### 主要方法
+
+```cpp
+// 数据库操作
+static Status Open(const Options& options, const std::string& name, DB** dbptr);
+Status Put(const WriteOptions& options, const std::string& key, const std::string& value);
+Status Get(const ReadOptions& options, const std::string& key, std::string* value);
+Status Delete(const WriteOptions& options, const std::string& key);
+Status Write(const WriteOptions& options, WriteBatch* updates);
+
+// 迭代器操作
+Iterator* NewIterator(const ReadOptions& options);
+```
+
+## 设计架构
+
+- **存储引擎**: 当前使用内存unordered_map，可扩展为持久化存储
+- **错误处理**: 统一的Status类，支持多种错误类型
+- **批量操作**: WriteBatch确保操作的原子性
+- **数据遍历**: Iterator提供有序的数据访问接口
+- **配置管理**: 多层次的配置选项控制行为
 
 ## 测试
 
-建议添加单元测试覆盖基本功能（put/get/delete、持久化恢复、并发读写）。可用 `CTest` 或 GoogleTest。
+运行测试程序：
+
+```bash
+cd build
+./kv_engine_app
+```
 
 ## 后续规划
 
-- 支持范围查询/前缀扫描
-- 压缩与合并 (compaction)
-- 可选内存缓存层
-- 网络协议（简单 RPC）以支持远程访问
+- [ ] 持久化存储支持（WAL + SSTable）
+- [ ] 压缩与合并 (compaction)
+- [ ] 并发控制优化
+- [ ] 范围查询支持
+- [ ] 内存缓存层
+- [ ] 网络协议支持
 
 ## 贡献
 
-欢迎提交 issue 和 PR。请包含：问题描述、重现步骤、预期行为和实际行为。
+欢迎提交 issue 和 PR。请包含：
+- 问题描述
+- 重现步骤
+- 预期行为和实际行为
 
 ## 许可证
 
-请在仓库中添加许可证文件（例如 `LICENSE`），并在此处注明许可证类型。
+请在仓库中添加许可证文件。
