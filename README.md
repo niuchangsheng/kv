@@ -98,7 +98,7 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 ├── CMakeLists.txt          # 主构建文件
 ├── README.md              # 项目说明
 ├── docs/                  # 项目文档
-│   └── README.md          # 详细设计文档
+│   └── DESIGN.md          # 系统设计文档（High/Low Level Design）
 ├── src/                   # 源代码
 │   ├── CMakeLists.txt     # 源码构建配置
 │   ├── kv_engine.h        # 主接口头文件
