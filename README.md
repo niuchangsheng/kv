@@ -97,6 +97,7 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 ```
 ├── CMakeLists.txt          # 主构建文件
 ├── README.md              # 项目说明
+├── SKILLS.md              # 技能要求文档
 ├── docs/                  # 项目文档
 │   └── DESIGN.md          # 系统设计文档（High/Low Level Design）
 ├── src/                   # 源代码
@@ -311,6 +312,8 @@ ctest
 - 问题描述
 - 重现步骤
 - 预期行为和实际行为
+
+**技能要求**: 如果你想贡献代码，请先查看 [SKILLS.md](SKILLS.md) 了解所需的技能要求。
 
 ## 许可证
 
