@@ -107,6 +107,74 @@ int main() {
 - **WriteBatch**: 批量操作
 - **Iterator**: 数据迭代器
 
+### Status类
+
+Status类用于表示操作的成功或失败状态，采用LevelDB的设计风格。
+
+#### 状态类型
+
+```cpp
+// 成功状态
+Status::OK()
+
+// 错误状态
+Status::NotFound("Not Found")          // 键不存在
+Status::Corruption("Corruption")       // 数据损坏
+Status::NotSupported("Not Supported")  // 操作不支持
+Status::InvalidArgument("Invalid Argument")  // 参数错误
+Status::IOError("IO Error")            // IO错误
+```
+
+#### 使用方法
+
+```cpp
+Status status = db->Get(read_options, "key", &value);
+if (status.ok()) {
+    // 操作成功
+    std::cout << "Value: " << value << std::endl;
+} else if (status.IsNotFound()) {
+    // 键不存在
+    std::cout << "Key not found" << std::endl;
+} else {
+    // 其他错误
+    std::cerr << "Error: " << status.ToString() << std::endl;
+}
+```
+
+### 配置选项类
+
+#### Options类
+
+数据库打开时的配置选项：
+
+```cpp
+Options options;
+options.create_if_missing = true;      // 如果数据库不存在则创建
+options.error_if_exists = false;       // 如果数据库已存在则报错
+options.paranoid_checks = false;       // 是否进行严格的数据校验
+// options.info_log = nullptr;         // 日志输出（可选）
+```
+
+#### ReadOptions类
+
+读取操作的配置选项：
+
+```cpp
+ReadOptions read_options;
+read_options.verify_checksums = false;  // 是否验证校验和
+read_options.fill_cache = true;         // 是否使用缓存
+// read_options.snapshot = nullptr;     // 快照读取（可选）
+```
+
+#### WriteOptions类
+
+写入操作的配置选项：
+
+```cpp
+WriteOptions write_options;
+write_options.sync = false;             // 是否同步写入磁盘
+```
+
 ### 主要方法
 
 ```cpp
