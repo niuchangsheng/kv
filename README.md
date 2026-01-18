@@ -98,6 +98,7 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 ├── CMakeLists.txt          # 主构建文件
 ├── README.md              # 项目说明
 ├── SKILLS.md              # 技能要求文档
+├── AGENTS.md              # AI代理配置指南
 ├── docs/                  # 项目文档
 │   └── DESIGN.md          # 系统设计文档（High/Low Level Design）
 ├── src/                   # 源代码
