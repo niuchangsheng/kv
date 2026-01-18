@@ -20,13 +20,3 @@ target_sources(kv_engine_lib
             write_batch.h
             db_iterator.h
 )
-
-# Create the executable
-add_executable(kv_engine_app
-    main.cpp
-)
-
-# Link the library to the executable
-target_link_libraries(kv_engine_app
-    kv_engine_lib
-)

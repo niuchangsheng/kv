@@ -199,12 +199,16 @@ Iterator* NewIterator(const ReadOptions& options);
 
 ## 测试
 
-运行测试程序：
+运行单元测试：
 
 ```bash
 cd build
-./kv_engine_app
+make test
+# 或者直接使用ctest
+ctest
 ```
+
+测试程序将输出到 `build/bin/` 目录下。
 
 ## 后续规划
 
