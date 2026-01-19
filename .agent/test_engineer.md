@@ -42,7 +42,7 @@
    └─► 覆盖正常和异常路径
    
 3. 运行测试
-   └─► 执行单元测试 (./bin/test_kv_engine)
+   └─► 执行单元测试 (make test)
    └─► 生成覆盖率报告 (./scripts/generate_coverage.sh)
    └─► 检查代码覆盖率是否>80%
    
@@ -286,7 +286,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="--coverage -g -O0"
 make
 
 # 2. 运行测试
-./bin/test_kv_engine
+make test
 
 # 3. 生成覆盖率数据
 lcov --capture --directory . --output-file coverage.info --ignore-errors source
@@ -510,7 +510,7 @@ cd build
 
 ### 功能回归检查
 
-1. ✅ 运行所有单元测试 (`./bin/test_kv_engine`)
+1. ✅ 运行所有单元测试 (`make test`)
 2. ✅ 确保所有测试通过
 3. ✅ 检查新增功能是否破坏现有功能
 4. ✅ 验证向后兼容性
