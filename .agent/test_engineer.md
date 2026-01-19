@@ -224,7 +224,7 @@ TEST(DBTest, Iterator) {
 
 ### 数据可靠性测试
 - [ ] 是否运行了数据正确性测试？（包含在`make test`中）
-- [ ] 是否运行了长时间运行的静默错误检测测试？(`./bin/test_silent_corruption`)
+- [ ] 是否运行了长时间运行的数据正确性测试？(`./bin/test_data_correctness_long`)
 - [ ] 长时间测试是否没有发现数据损坏？
 - [ ] 是否在关键变更后运行了长时间测试？
 
@@ -245,11 +245,11 @@ TEST(DBTest, Iterator) {
 - **指标**: 延迟、QPS、内存使用
 - **工具**: Google Benchmark
 
-### 长时间运行测试（静默错误检测）
+### 长时间运行测试（数据正确性）
 - **目标**: 检测数据静默损坏（Silent Data Corruption）
 - **场景**: 数据在写入时读取正确，但过一段时间后可能损坏
 - **方法**: 持续运行读写操作，定期验证之前写入的数据
-- **执行**: `./bin/test_silent_corruption`（独立测试程序）
+- **执行**: `./bin/test_data_correctness_long`（独立测试程序）
 - **配置**: 通过环境变量控制
   - `KV_TEST_DURATION_SECONDS`: 测试持续时间（默认30秒）
   - `KV_TEST_NUM_KEYS`: 维护的键数量（默认1000）
@@ -257,13 +257,13 @@ TEST(DBTest, Iterator) {
 - **示例**:
   ```bash
   # 运行30秒的长时间测试（默认）
-  ./bin/test_silent_corruption
+  ./bin/test_data_correctness_long
   
   # 运行3秒的快速测试
-  KV_TEST_DURATION_SECONDS=3 ./bin/test_silent_corruption
+  KV_TEST_DURATION_SECONDS=3 ./bin/test_data_correctness_long
   
   # 运行60秒的长时间测试，使用2000个键
-  KV_TEST_DURATION_SECONDS=60 KV_TEST_NUM_KEYS=2000 ./bin/test_silent_corruption
+  KV_TEST_DURATION_SECONDS=60 KV_TEST_NUM_KEYS=2000 ./bin/test_data_correctness_long
   ```
 - **验证内容**:
   - 持续写入和读取数据

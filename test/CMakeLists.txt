@@ -24,19 +24,19 @@ target_link_libraries(kv_bench
     kv_engine_lib
 )
 
-# Create the silent corruption test executable
-add_executable(test_silent_corruption
-    test_silent_corruption.cpp
+# Create the long-running data correctness test executable
+add_executable(test_data_correctness_long
+    test_data_correctness_long.cpp
 )
 
-# Link the KV engine library to the silent corruption test
-target_link_libraries(test_silent_corruption
+# Link the KV engine library to the data correctness test
+target_link_libraries(test_data_correctness_long
     kv_engine_lib
 )
 
-# Register the silent corruption test (optional, as it's long-running)
+# Register the data correctness test (optional, as it's long-running)
 # Uncomment to include in 'make test'
 # add_test(
-#     NAME test_silent_corruption
-#     COMMAND test_silent_corruption
+#     NAME test_data_correctness_long
+#     COMMAND test_data_correctness_long
 # )

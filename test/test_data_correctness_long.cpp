@@ -8,7 +8,7 @@
 #include <cstdlib>
 
 int main(int argc, char* argv[]) {
-    std::cout << "Testing silent data corruption (long-running test)..." << std::endl;
+    std::cout << "Testing data correctness (long-running test)..." << std::endl;
     std::cout << "This test runs continuously to detect data corruption over time." << std::endl;
     std::cout << std::endl;
 
@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
              << " seconds of continuous operation" << std::endl;
     std::cout << "  ✓ All " << expected_data.size() << " keys verified correct" << std::endl;
     std::cout << std::endl;
-    std::cout << "Silent data corruption test passed!" << std::endl;
+    std::cout << "Data correctness test passed!" << std::endl;
 
     delete db;
     return 0;
