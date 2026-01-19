@@ -1,11 +1,16 @@
+# Find Google Test
+find_package(GTest REQUIRED)
+
 # Create the test executable
 add_executable(test_kv_engine
     test_kv_engine.cpp
 )
 
-# Link the KV engine library to the test
+# Link the KV engine library and GTest to the test
 target_link_libraries(test_kv_engine
     kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
 )
 
 # Register the test
@@ -29,9 +34,11 @@ add_executable(kv_data_correctness
     kv_data_correctness.cpp
 )
 
-# Link the KV engine library to the data correctness test
+# Link the KV engine library and GTest to the data correctness test
 target_link_libraries(kv_data_correctness
     kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
 )
 
 # Register the data correctness test (optional, as it's long-running)

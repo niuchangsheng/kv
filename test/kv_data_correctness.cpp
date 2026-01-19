@@ -1,43 +1,45 @@
 #include "kv_engine.h"
-#include <cassert>
-#include <iostream>
+#include <gtest/gtest.h>
 #include <map>
 #include <chrono>
 #include <thread>
 #include <random>
 #include <cstdlib>
 
-int main(int argc, char* argv[]) {
-    std::cout << "Testing data correctness (long-running test)..." << std::endl;
-    std::cout << "This test runs continuously to detect data corruption over time." << std::endl;
-    std::cout << std::endl;
+class LongRunningDataCorrectnessTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        options_.create_if_missing = true;
+        Status status = DB::Open(options_, "/tmp/testdb_silent_corruption", &db_);
+        ASSERT_TRUE(status.ok());
+        
+        // Test configuration (can be overridden by environment variables)
+        const char* duration_env = std::getenv("KV_TEST_DURATION_SECONDS");
+        test_duration_seconds_ = duration_env ? std::atoi(duration_env) : 30;
+        
+        const char* keys_env = std::getenv("KV_TEST_NUM_KEYS");
+        num_keys_ = keys_env ? std::atoi(keys_env) : 1000;
+        
+        const char* interval_env = std::getenv("KV_TEST_VERIFY_INTERVAL_MS");
+        verification_interval_ms_ = interval_env ? std::atoi(interval_env) : 100;
+    }
 
-    // Open database
-    Options options;
-    options.create_if_missing = true;
-    DB* db;
-    Status status = DB::Open(options, "/tmp/testdb_silent_corruption", &db);
-    assert(status.ok());
+    void TearDown() override {
+        delete db_;
+    }
 
-    WriteOptions write_options;
-    ReadOptions read_options;
+    Options options_;
+    WriteOptions write_options_;
+    ReadOptions read_options_;
+    DB* db_;
+    int test_duration_seconds_;
+    int num_keys_;
+    int verification_interval_ms_;
+};
 
-    // Test configuration (can be overridden by environment variables)
-    const char* duration_env = std::getenv("KV_TEST_DURATION_SECONDS");
-    const int test_duration_seconds = duration_env ? std::atoi(duration_env) : 30;
+TEST_F(LongRunningDataCorrectnessTest, SilentDataCorruption) {
+    // This test runs continuously to detect data corruption over time
     
-    const char* keys_env = std::getenv("KV_TEST_NUM_KEYS");
-    const int num_keys = keys_env ? std::atoi(keys_env) : 1000;
-    
-    const char* interval_env = std::getenv("KV_TEST_VERIFY_INTERVAL_MS");
-    const int verification_interval_ms = interval_env ? std::atoi(interval_env) : 100;
-    
-    std::cout << "  Configuration:" << std::endl;
-    std::cout << "    Keys: " << num_keys << std::endl;
-    std::cout << "    Duration: " << test_duration_seconds << " seconds" << std::endl;
-    std::cout << "    Verification interval: " << verification_interval_ms << " ms" << std::endl;
-    std::cout << std::endl;
-
     // Data structure to track expected values
     std::map<std::string, std::string> expected_data;
     std::map<std::string, int> write_count;  // Track how many times each key was written
@@ -53,14 +55,12 @@ int main(int argc, char* argv[]) {
     // Random number generator
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> key_dist(0, num_keys - 1);
+    std::uniform_int_distribution<> key_dist(0, num_keys_ - 1);
     std::uniform_int_distribution<> value_dist(1, 1000);
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_verification = start_time;
     auto last_status_report = start_time;
-
-    std::cout << "  Starting continuous read/write test..." << std::endl;
 
     while (true) {
         auto current_time = std::chrono::steady_clock::now();
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
             current_time - start_time).count();
 
         // Check if test duration has elapsed
-        if (elapsed >= test_duration_seconds) {
+        if (elapsed >= test_duration_seconds_) {
             break;
         }
 
@@ -82,10 +82,10 @@ int main(int argc, char* argv[]) {
             std::string value = "value_" + std::to_string(value_dist(gen)) + "_" + 
                                std::to_string(total_writes);
             
-            status = db->Put(write_options, key, value);
+            Status status = db_->Put(write_options_, key, value);
             if (!status.ok()) {
-                std::cerr << "  ERROR: Write failed for key " << key 
-                         << ": " << status.ToString() << std::endl;
+                ADD_FAILURE() << "Write failed for key " << key 
+                             << ": " << status.ToString();
                 other_errors++;
                 continue;
             }
@@ -100,31 +100,30 @@ int main(int argc, char* argv[]) {
             std::string key = "key_" + std::to_string(key_index);
             
             std::string actual_value;
-            status = db->Get(read_options, key, &actual_value);
+            Status status = db_->Get(read_options_, key, &actual_value);
             total_reads++;
 
             if (status.IsNotFound()) {
                 // Key might not exist yet, that's OK
                 if (expected_data.find(key) != expected_data.end()) {
                     // But we expected it to exist!
-                    std::cerr << "  ERROR: Key " << key 
-                             << " was written but now not found!" << std::endl;
+                    ADD_FAILURE() << "Key " << key 
+                                 << " was written but now not found!";
                     not_found_errors++;
                 }
             } else if (!status.ok()) {
-                std::cerr << "  ERROR: Read failed for key " << key 
-                         << ": " << status.ToString() << std::endl;
+                ADD_FAILURE() << "Read failed for key " << key 
+                             << ": " << status.ToString();
                 other_errors++;
             } else {
                 // Verify data correctness
                 auto it = expected_data.find(key);
                 if (it != expected_data.end()) {
                     if (actual_value != it->second) {
-                        std::cerr << "  CORRUPTION DETECTED!" << std::endl;
-                        std::cerr << "    Key: " << key << std::endl;
-                        std::cerr << "    Expected: " << it->second << std::endl;
-                        std::cerr << "    Actual: " << actual_value << std::endl;
-                        std::cerr << "    Write count: " << write_count[key] << std::endl;
+                        ADD_FAILURE() << "CORRUPTION DETECTED! Key: " << key
+                                     << ", Expected: " << it->second
+                                     << ", Actual: " << actual_value
+                                     << ", Write count: " << write_count[key];
                         corruption_errors++;
                     }
                 }
@@ -135,26 +134,25 @@ int main(int argc, char* argv[]) {
         auto time_since_verification = std::chrono::duration_cast<std::chrono::milliseconds>(
             current_time - last_verification).count();
         
-        if (time_since_verification >= verification_interval_ms) {
+        if (time_since_verification >= verification_interval_ms_) {
             // Verify all keys in expected_data
             for (const auto& pair : expected_data) {
                 std::string actual_value;
-                status = db->Get(read_options, pair.first, &actual_value);
+                Status status = db_->Get(read_options_, pair.first, &actual_value);
                 
                 if (status.IsNotFound()) {
-                    std::cerr << "  CORRUPTION: Key " << pair.first 
-                             << " was written but now not found!" << std::endl;
+                    ADD_FAILURE() << "CORRUPTION: Key " << pair.first 
+                                 << " was written but now not found!";
                     not_found_errors++;
                 } else if (!status.ok()) {
-                    std::cerr << "  ERROR: Read failed for key " << pair.first 
-                             << ": " << status.ToString() << std::endl;
+                    ADD_FAILURE() << "ERROR: Read failed for key " << pair.first 
+                                 << ": " << status.ToString();
                     other_errors++;
                 } else if (actual_value != pair.second) {
-                    std::cerr << "  CORRUPTION DETECTED!" << std::endl;
-                    std::cerr << "    Key: " << pair.first << std::endl;
-                    std::cerr << "    Expected: " << pair.second << std::endl;
-                    std::cerr << "    Actual: " << actual_value << std::endl;
-                    std::cerr << "    Write count: " << write_count[pair.first] << std::endl;
+                    ADD_FAILURE() << "CORRUPTION DETECTED! Key: " << pair.first
+                                 << ", Expected: " << pair.second
+                                 << ", Actual: " << actual_value
+                                 << ", Write count: " << write_count[pair.first];
                     corruption_errors++;
                 }
             }
@@ -180,27 +178,24 @@ int main(int argc, char* argv[]) {
     }
 
     // Final comprehensive verification
-    std::cout << std::endl;
-    std::cout << "  Performing final comprehensive verification..." << std::endl;
     int final_verification_errors = 0;
     
     for (const auto& pair : expected_data) {
         std::string actual_value;
-        status = db->Get(read_options, pair.first, &actual_value);
+        Status status = db_->Get(read_options_, pair.first, &actual_value);
         
         if (status.IsNotFound()) {
-            std::cerr << "  FINAL ERROR: Key " << pair.first 
-                     << " was written but now not found!" << std::endl;
+            ADD_FAILURE() << "FINAL ERROR: Key " << pair.first 
+                         << " was written but now not found!";
             final_verification_errors++;
         } else if (!status.ok()) {
-            std::cerr << "  FINAL ERROR: Read failed for key " << pair.first 
-                     << ": " << status.ToString() << std::endl;
+            ADD_FAILURE() << "FINAL ERROR: Read failed for key " << pair.first 
+                         << ": " << status.ToString();
             final_verification_errors++;
         } else if (actual_value != pair.second) {
-            std::cerr << "  FINAL CORRUPTION DETECTED!" << std::endl;
-            std::cerr << "    Key: " << pair.first << std::endl;
-            std::cerr << "    Expected: " << pair.second << std::endl;
-            std::cerr << "    Actual: " << actual_value << std::endl;
+            ADD_FAILURE() << "FINAL CORRUPTION DETECTED! Key: " << pair.first
+                         << ", Expected: " << pair.second
+                         << ", Actual: " << actual_value;
             final_verification_errors++;
         }
     }
@@ -225,21 +220,17 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
 
     // Assert no errors
-    if (corruption_errors > 0 || not_found_errors > 0 || other_errors > 0 || final_verification_errors > 0) {
-        std::cerr << "  FAILED: Data corruption or errors detected!" << std::endl;
-        std::cerr << "  Total errors: " 
-                 << (corruption_errors + not_found_errors + other_errors + final_verification_errors) 
-                 << std::endl;
-        delete db;
-        return 1;
-    }
-
-    std::cout << "  ✓ No data corruption detected during " << test_duration_seconds 
+    EXPECT_EQ(corruption_errors, 0) << "Data corruption errors detected!";
+    EXPECT_EQ(not_found_errors, 0) << "Not found errors detected!";
+    EXPECT_EQ(other_errors, 0) << "Other errors detected!";
+    EXPECT_EQ(final_verification_errors, 0) << "Final verification errors detected!";
+    
+    std::cout << "  ✓ No data corruption detected during " << test_duration_seconds_ 
              << " seconds of continuous operation" << std::endl;
     std::cout << "  ✓ All " << expected_data.size() << " keys verified correct" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Data correctness test passed!" << std::endl;
+}
 
-    delete db;
-    return 0;
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
