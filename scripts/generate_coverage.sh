@@ -84,10 +84,13 @@ echo ""
 # Generate coverage data
 echo -e "${YELLOW}Generating coverage data...${NC}"
 # First capture all coverage data (including external)
+# Ignore errors: source (source file issues), mismatch (line number mismatches), gcov (gcov warnings)
+# Suppress all warnings by filtering output
 lcov --capture \
      --directory "${BUILD_DIR}" \
      --output-file "${COVERAGE_INFO}" \
-     --ignore-errors source,mismatch
+     --ignore-errors source,mismatch,gcov \
+     2>&1 | grep -vE "(WARNING|use \".*\" to suppress)" || true
 
 # Check if coverage data was generated
 if [ ! -f "${COVERAGE_INFO}" ]; then
@@ -107,6 +110,8 @@ echo ""
 
 # Filter coverage data (exclude test directory and system libraries)
 echo -e "${YELLOW}Filtering coverage data...${NC}"
+# Ignore errors: unused (unused exclude patterns), empty (empty coverage data)
+# Suppress all warnings by filtering output
 lcov --remove "${COVERAGE_INFO}" \
      '/usr/*' \
      '*/test/*' \
@@ -115,7 +120,8 @@ lcov --remove "${COVERAGE_INFO}" \
      '*/13/*' \
      '*/c++/*' \
      --output-file "${COVERAGE_FILTERED}" \
-     --ignore-errors unused,empty
+     --ignore-errors unused,empty \
+     2>&1 | grep -vE "(WARNING|use \".*\" to suppress)" || true
 
 # Check if filtered data is valid
 if [ ! -f "${COVERAGE_FILTERED}" ]; then
@@ -134,12 +140,14 @@ echo ""
 
 # Generate HTML report
 echo -e "${YELLOW}Generating HTML report...${NC}"
+# Suppress warnings from genhtml
 genhtml "${COVERAGE_FILTERED}" \
         --output-directory "${COVERAGE_DIR}" \
         --title "KV Engine Coverage Report (src only)" \
         --show-details \
         --legend \
-        --demangle-cpp
+        --demangle-cpp \
+        2>&1 | grep -vE "(WARNING|use \".*\" to suppress)" || true
 
 if [ ! -d "${COVERAGE_DIR}" ]; then
     echo -e "${RED}Error: Failed to generate HTML report${NC}"
