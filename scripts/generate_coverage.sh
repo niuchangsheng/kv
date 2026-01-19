@@ -73,11 +73,10 @@ echo ""
 
 # Run tests
 echo -e "${YELLOW}Running tests...${NC}"
-if [ -f "${BUILD_DIR}/bin/test_kv_engine" ]; then
-    "${BUILD_DIR}/bin/test_kv_engine"
+if make test; then
     echo -e "${GREEN}✓ Tests passed${NC}"
 else
-    echo -e "${RED}Error: test_kv_engine not found${NC}"
+    echo -e "${RED}Error: Tests failed${NC}"
     exit 1
 fi
 echo ""
