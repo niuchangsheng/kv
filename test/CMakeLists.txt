@@ -23,3 +23,20 @@ add_executable(kv_bench
 target_link_libraries(kv_bench
     kv_engine_lib
 )
+
+# Create the silent corruption test executable
+add_executable(test_silent_corruption
+    test_silent_corruption.cpp
+)
+
+# Link the KV engine library to the silent corruption test
+target_link_libraries(test_silent_corruption
+    kv_engine_lib
+)
+
+# Register the silent corruption test (optional, as it's long-running)
+# Uncomment to include in 'make test'
+# add_test(
+#     NAME test_silent_corruption
+#     COMMAND test_silent_corruption
+# )
