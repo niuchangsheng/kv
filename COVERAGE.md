@@ -12,7 +12,58 @@
 
 ## 生成覆盖率报告的方法
 
-### 方法1: 使用 gcov + lcov (推荐)
+### 方法0: 使用自动化脚本 (最简单) ⭐
+
+**推荐使用此方法** - 一键生成覆盖率报告，自动处理所有步骤。
+
+#### 使用脚本
+
+```bash
+# 从项目根目录运行
+./scripts/generate_coverage.sh
+
+# 或者自动打开报告
+./scripts/generate_coverage.sh --open
+```
+
+#### 脚本功能
+
+- ✅ 自动检查依赖工具（gcov, lcov）
+- ✅ 清理旧的构建文件
+- ✅ 使用覆盖率标志编译项目
+- ✅ 运行测试程序
+- ✅ 生成覆盖率数据
+- ✅ 过滤test目录和系统库
+- ✅ 生成HTML报告
+- ✅ 显示覆盖率摘要
+
+#### 输出
+
+- **覆盖率报告**: `build/coverage/index.html`
+- **过滤后的数据**: `build/coverage_filtered.info`
+- **覆盖率摘要**: 终端输出
+
+#### 脚本选项
+
+```bash
+# 基本用法
+./scripts/generate_coverage.sh
+
+# 生成报告并自动打开
+./scripts/generate_coverage.sh --open
+./scripts/generate_coverage.sh -o
+```
+
+#### 故障排查
+
+如果脚本执行失败：
+1. 确保已安装 `gcov` 和 `lcov`
+2. 确保脚本有执行权限：`chmod +x scripts/generate_coverage.sh`
+3. 检查错误信息，脚本会提示缺少的依赖
+
+---
+
+### 方法1: 使用 gcov + lcov (手动步骤)
 
 这是最常用和推荐的方法，可以生成HTML格式的详细覆盖率报告。
 
