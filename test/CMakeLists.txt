@@ -19,6 +19,70 @@ add_test(
     COMMAND test_kv_engine
 )
 
+# Create test_status executable
+add_executable(test_status
+    test_status.cpp
+)
+
+target_link_libraries(test_status
+    kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
+)
+
+add_test(
+    NAME test_status
+    COMMAND test_status
+)
+
+# Create test_write_batch executable
+add_executable(test_write_batch
+    test_write_batch.cpp
+)
+
+target_link_libraries(test_write_batch
+    kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
+)
+
+add_test(
+    NAME test_write_batch
+    COMMAND test_write_batch
+)
+
+# Create test_iterator executable
+add_executable(test_iterator
+    test_iterator.cpp
+)
+
+target_link_libraries(test_iterator
+    kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
+)
+
+add_test(
+    NAME test_iterator
+    COMMAND test_iterator
+)
+
+# Create test_options executable
+add_executable(test_options
+    test_options.cpp
+)
+
+target_link_libraries(test_options
+    kv_engine_lib
+    GTest::gtest
+    GTest::gtest_main
+)
+
+add_test(
+    NAME test_options
+    COMMAND test_options
+)
+
 # Create the benchmark executable
 add_executable(kv_bench
     kv_bench.cpp
