@@ -88,7 +88,7 @@ echo -e "${YELLOW}Generating coverage data...${NC}"
 lcov --capture \
      --directory "${BUILD_DIR}" \
      --output-file "${COVERAGE_INFO}" \
-     --ignore-errors source
+     --ignore-errors source,mismatch
 
 # Check if coverage data was generated
 if [ ! -f "${COVERAGE_INFO}" ]; then
