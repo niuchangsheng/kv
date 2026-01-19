@@ -83,6 +83,35 @@ TEST_F(StatusTest, IOErrorStatus) {
     ASSERT_EQ(status2.ToString(), "IOError: IO Error");
 }
 
+TEST_F(StatusTest, UnknownStatusDefaultCase) {
+    // Test the default case in ToString() switch statement
+    // Since Status constructor and enum are private, we need to use
+    // a workaround to create a Status with an unknown code.
+    // We'll use pointer manipulation to access private members.
+    
+    // Create a valid Status first
+    Status status = Status::IOError("Test message");
+    
+    // Access the private code_ member using pointer arithmetic
+    // Status has two members: Code code_ and std::string msg_
+    // We need to modify code_ to an invalid value
+    struct StatusLayout {
+        int code_;  // Assuming Code is an int (enum)
+        std::string msg_;
+    };
+    
+    // Use reinterpret_cast to access private members
+    StatusLayout* layout = reinterpret_cast<StatusLayout*>(&status);
+    
+    // Set code_ to an invalid value (6, which is not in the enum)
+    // This will trigger the default case in ToString()
+    layout->code_ = 6;
+    
+    // Now ToString() should hit the default case
+    std::string result = status.ToString();
+    ASSERT_EQ(result, "Unknown: Test message");
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
