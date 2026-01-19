@@ -25,18 +25,18 @@ target_link_libraries(kv_bench
 )
 
 # Create the long-running data correctness test executable
-add_executable(test_data_correctness_long
-    test_data_correctness_long.cpp
+add_executable(kv_data_correctness
+    kv_data_correctness.cpp
 )
 
 # Link the KV engine library to the data correctness test
-target_link_libraries(test_data_correctness_long
+target_link_libraries(kv_data_correctness
     kv_engine_lib
 )
 
 # Register the data correctness test (optional, as it's long-running)
 # Uncomment to include in 'make test'
 # add_test(
-#     NAME test_data_correctness_long
-#     COMMAND test_data_correctness_long
+#     NAME kv_data_correctness
+#     COMMAND kv_data_correctness
 # )
