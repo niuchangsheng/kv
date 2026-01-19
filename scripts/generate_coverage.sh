@@ -60,8 +60,7 @@ echo -e "${YELLOW}Configuring CMake with coverage flags...${NC}"
 cd "${BUILD_DIR}"
 cmake .. \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS="--coverage -g -O0" \
-    -DCMAKE_C_FLAGS="--coverage -g -O0"
+    -DCMAKE_CXX_FLAGS="--coverage -g -O0"
 
 echo -e "${GREEN}✓ Configured${NC}"
 echo ""
@@ -85,13 +84,22 @@ echo ""
 
 # Generate coverage data
 echo -e "${YELLOW}Generating coverage data...${NC}"
+# First capture all coverage data (including external)
 lcov --capture \
      --directory "${BUILD_DIR}" \
      --output-file "${COVERAGE_INFO}" \
-     --no-external
+     --ignore-errors source
 
+# Check if coverage data was generated
 if [ ! -f "${COVERAGE_INFO}" ]; then
     echo -e "${RED}Error: Failed to generate coverage.info${NC}"
+    exit 1
+fi
+
+# Check if coverage data has valid records
+if ! lcov --summary "${COVERAGE_INFO}" &>/dev/null; then
+    echo -e "${RED}Error: No valid coverage data found${NC}"
+    echo -e "${YELLOW}Hint: Make sure tests were run and .gcda files exist${NC}"
     exit 1
 fi
 
@@ -105,12 +113,21 @@ lcov --remove "${COVERAGE_INFO}" \
      '*/test/*' \
      '*/build/*' \
      '*/CMakeFiles/*' \
+     '*/13/*' \
+     '*/c++/*' \
      --output-file "${COVERAGE_FILTERED}" \
-     --ignore-errors unused
+     --ignore-errors unused,empty
 
+# Check if filtered data is valid
 if [ ! -f "${COVERAGE_FILTERED}" ]; then
     echo -e "${RED}Error: Failed to filter coverage data${NC}"
     exit 1
+fi
+
+# Verify filtered data has content
+if ! lcov --summary "${COVERAGE_FILTERED}" &>/dev/null; then
+    echo -e "${YELLOW}Warning: Filtered coverage data is empty, using original data${NC}"
+    cp "${COVERAGE_INFO}" "${COVERAGE_FILTERED}"
 fi
 
 echo -e "${GREEN}✓ Coverage data filtered${NC}"
