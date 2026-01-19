@@ -13,3 +13,13 @@ add_test(
     NAME test_kv_engine
     COMMAND test_kv_engine
 )
+
+# Create the benchmark executable
+add_executable(kv_bench
+    kv_bench.cpp
+)
+
+# Link the KV engine library to the benchmark
+target_link_libraries(kv_bench
+    kv_engine_lib
+)
