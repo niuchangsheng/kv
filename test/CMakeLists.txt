@@ -13,12 +13,6 @@ target_link_libraries(test_kv_engine
     GTest::gtest_main
 )
 
-# Register the test
-add_test(
-    NAME test_kv_engine
-    COMMAND test_kv_engine
-)
-
 # Create test_status executable
 add_executable(test_status
     test_status.cpp
@@ -28,11 +22,6 @@ target_link_libraries(test_status
     kv_engine_lib
     GTest::gtest
     GTest::gtest_main
-)
-
-add_test(
-    NAME test_status
-    COMMAND test_status
 )
 
 # Create test_write_batch executable
@@ -46,11 +35,6 @@ target_link_libraries(test_write_batch
     GTest::gtest_main
 )
 
-add_test(
-    NAME test_write_batch
-    COMMAND test_write_batch
-)
-
 # Create test_iterator executable
 add_executable(test_iterator
     test_iterator.cpp
@@ -62,11 +46,6 @@ target_link_libraries(test_iterator
     GTest::gtest_main
 )
 
-add_test(
-    NAME test_iterator
-    COMMAND test_iterator
-)
-
 # Create test_options executable
 add_executable(test_options
     test_options.cpp
@@ -76,11 +55,6 @@ target_link_libraries(test_options
     kv_engine_lib
     GTest::gtest
     GTest::gtest_main
-)
-
-add_test(
-    NAME test_options
-    COMMAND test_options
 )
 
 # Create the benchmark executable
@@ -103,6 +77,35 @@ target_link_libraries(kv_data_correctness
     kv_engine_lib
     GTest::gtest
     GTest::gtest_main
+)
+
+# ============================================================================
+# Register all tests (centralized test management)
+# ============================================================================
+
+add_test(
+    NAME test_kv_engine
+    COMMAND test_kv_engine
+)
+
+add_test(
+    NAME test_status
+    COMMAND test_status
+)
+
+add_test(
+    NAME test_write_batch
+    COMMAND test_write_batch
+)
+
+add_test(
+    NAME test_iterator
+    COMMAND test_iterator
+)
+
+add_test(
+    NAME test_options
+    COMMAND test_options
 )
 
 # Register the data correctness test (optional, as it's long-running)
