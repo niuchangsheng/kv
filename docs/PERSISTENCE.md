@@ -274,10 +274,12 @@ SSTable File: <db_name>/<level>/<file_number>.sst
 ┌─────────────────────────────────────────────────────────┐
 │                 Index Block                              │
 │  (指向每个 Data Block 的起始 key 和偏移量)                │
+│  (详细格式见下方 Index Block 格式说明)                    │
 └─────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │                 Meta Block (可选)                        │
 │  (Bloom Filter, 统计信息等)                              │
+│  (详细格式见下方 Meta Block 格式说明)                     │
 └─────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │                    Footer                                │
@@ -295,13 +297,92 @@ Data Block:
 └─────────────┴─────────────┴─────────────┴─────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │ Restart Points (每 16 个 entry 一个重启点)                │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+│  │ Offset 0 │  │ Offset 1 │  │ Offset 2 │  │Offset N│  │
+│  │ (4 bytes)│  │ (4 bytes)│  │ (4 bytes)│  │(4 bytes)│  │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘  │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Restart Point Count (4 bytes)                           │
 └─────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │ Block Trailer (Compression Type + Checksum)              │
+│  ┌──────────────┬────────────────────────────────────┐  │
+│  │ Compression  │ Checksum (CRC32, 4 bytes)         │  │
+│  │ Type (1 byte)│                                    │  │
+│  └──────────────┴────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Restart Points (重启点) 设计**:
+
+**用途**:
+1. **快速定位**: 无需从 Block 开头顺序解码，可以直接跳到重启点位置
+2. **二分查找优化**: 在重启点之间进行二分查找，提高查找效率
+3. **减少解码开销**: 重启点处的 Entry 存储完整 key（shared_len = 0），无需依赖前一个 key
+
+**工作原理**:
+- **重启点间隔**: 默认每 16 个 Entry 设置一个重启点（可配置）
+- **重启点 Entry**: 在重启点位置的 Entry，`shared_len = 0`，存储完整的 key
+- **重启点数组**: 存储每个重启点在 Block 内的字节偏移量（相对于 Block 起始位置）
+- **重启点数量**: 存储在 Block 末尾，用于确定重启点数组的大小
+
+**查找算法**:
+```
+1. 读取重启点数组和数量
+2. 在重启点之间进行二分查找，找到目标 key 可能所在的范围
+3. 从该重启点开始顺序解码 Entry，直到找到目标 key 或超出范围
+```
+
+**示例**:
+```
+Data Block 内容:
+Entry 0:  key="apple",     shared=0, offset=0
+Entry 1:  key="application", shared=3, offset=15
+Entry 2:  key="apply",      shared=3, offset=35
+...
+Entry 15: key="banana",    shared=0, offset=200  ← 重启点 1
+Entry 16: key="band",       shared=5, offset=215
+...
+Entry 31: key="cherry",    shared=0, offset=400  ← 重启点 2
+...
+
+重启点数组:
+[0, 200, 400, ...]  (每个重启点在 Block 中的偏移量)
+重启点数量: 3
+
+查找 "banana":
+1. 二分查找重启点数组，找到重启点 1 (offset=200) 包含 "banana"
+2. 从 offset=200 开始顺序解码，Entry 15 就是 "banana"
+```
+
+**性能优势**:
+- **顺序查找**: O(n) → **重启点优化**: O(log(restart_count)) + O(restart_interval)
+- **典型场景**: 16 个重启点，每个间隔 16 个 Entry
+  - 顺序查找: 平均 128 次解码
+  - 重启点优化: log2(16) = 4 次重启点比较 + 平均 8 次 Entry 解码 = 12 次操作
+  - **性能提升**: 约 10 倍
+
+**Block Trailer 格式**:
+```
+┌──────────────┬────────────────────────────────────┐
+│ Compression  │ Checksum (CRC32, 4 bytes)         │
+│ Type (1 byte)│                                    │
+└──────────────┴────────────────────────────────────┘
+
+Compression Type:
+  0x00 = kNoCompression
+  0x01 = kSnappyCompression
+  0x02 = kZlibCompression
+
+Checksum:
+  - 对整个 Block（包括所有 Entry、重启点数组、重启点数量）计算 CRC32
+  - 用于检测数据损坏
+```
+
 #### Entry 格式 (共享前缀压缩)
+
+**Entry 格式说明**:
 
 ```
 Entry Format:
@@ -313,13 +394,256 @@ Entry Format:
 │     Value    │               │              │              │
 │  (variable)  │               │              │              │
 └──────────────┴──────────────┴──────────────┴──────────────┘
+```
 
-示例:
-Entry 0: key="apple", value="red"
-Entry 1: key="application", value="software"
-  - Shared Len: 3 ("app")
-  - Non-Shared Key: "lication"
-  - Value: "software"
+**字段说明**:
+
+1. **Shared Len (共享长度)**: 
+   - **类型**: varint (变长整数，1-5 字节)
+   - **用途**: 表示当前 key 与前一个 key 的共享前缀长度
+   - **优势**: 
+     - 减少存储空间：相邻 key 通常有共同前缀（如 "user:001", "user:002"）
+     - 提高压缩率：对于有序数据，共享前缀非常常见
+     - 降低 I/O：更小的数据块意味着更少的磁盘读取
+   - **示例**: 
+     ```
+     Entry 0: key="apple", value="red"
+     Entry 1: key="application", value="software"
+       - Shared Len: 3 (前 3 个字符 "app" 是共享的)
+       - Non-Shared Key Length: 8 ("lication" 的长度)
+       - Non-Shared Key: "lication"
+       - Value: "software"
+     ```
+
+2. **Non-Shared Key Length (非共享 key 长度)**:
+   - **类型**: varint
+   - **用途**: 当前 key 中与前一个 key 不共享的部分的长度
+   - **计算**: `current_key.length() - shared_len`
+
+3. **Value Length (值长度)**:
+   - **类型**: varint
+   - **用途**: value 的字节长度
+
+4. **Non-Shared Key (非共享 key 部分)**:
+   - **类型**: 字节数组
+   - **用途**: key 中与前一个 key 不同的部分
+   - **完整 key 重建**: `previous_key.substr(0, shared_len) + non_shared_key`
+
+5. **Value (值)**:
+   - **类型**: 字节数组
+   - **用途**: 完整的 value 数据
+
+**压缩效果示例**:
+
+```
+未压缩存储:
+Entry 0: "user:001" (8 bytes) + "value1" (6 bytes) = 14 bytes
+Entry 1: "user:002" (8 bytes) + "value2" (6 bytes) = 14 bytes
+总计: 28 bytes
+
+压缩存储:
+Entry 0: 0 (shared) + 8 (key) + 6 (value) = 14 bytes
+Entry 1: 6 (shared "user:0") + 2 (key "02") + 6 (value) = 14 bytes
+总计: 28 bytes (此例压缩效果不明显)
+
+更好的示例:
+Entry 0: "user:profile:name" (17 bytes) + "Alice" (5 bytes) = 22 bytes
+Entry 1: "user:profile:age" (15 bytes) + "25" (2 bytes) = 17 bytes
+未压缩总计: 39 bytes
+
+压缩存储:
+Entry 0: 0 + 17 + 5 = 22 bytes
+Entry 1: 13 (shared "user:profile:") + 2 (key "ag") + 2 (value) = 16 bytes
+压缩总计: 38 bytes (节省 1 byte，但实际场景中节省更多)
+```
+
+**共享前缀压缩的优势**:
+- **空间节省**: 对于有序 key，通常有 50-80% 的共享前缀
+- **读取性能**: 更小的数据块意味着更快的 I/O
+- **缓存效率**: 更小的数据块提高缓存命中率
+
+#### Index Block 格式
+
+**Index Block 的作用**:
+- **快速定位**: 通过二分查找快速找到包含目标 key 的 Data Block
+- **减少 I/O**: 避免读取所有 Data Block，只读取相关的 Block
+- **范围查询**: 支持范围查询，快速确定需要读取的 Block 范围
+
+**Index Block 格式**:
+
+```
+Index Block (与 Data Block 格式相同):
+┌─────────────┬─────────────┬─────────────┬─────────────┐
+│ Entry 0     │ Entry 1     │ Entry 2     │ ...         │
+│ (key+value) │ (key+value) │ (key+value) │             │
+└─────────────┴─────────────┴─────────────┴─────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Restart Points                                          │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Restart Point Count                                      │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Block Trailer                                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Index Entry 格式**:
+
+每个 Index Entry 对应一个 Data Block：
+
+```
+Index Entry:
+┌──────────────┬──────────────────────────────────────────┐
+│ Key          │ Value (BlockHandle)                      │
+│ (string)     │  ┌──────────────┬──────────────────────┐ │
+│              │  │ Offset       │ Size                 │ │
+│              │  │ (8 bytes)    │ (8 bytes)            │ │
+│              │  └──────────────┴──────────────────────┘ │
+└──────────────┴──────────────────────────────────────────┘
+```
+
+**字段说明**:
+
+1. **Key**: 
+   - **内容**: 对应 Data Block 中**最后一个 Entry 的 key**（不是第一个）
+   - **用途**: 用于二分查找，判断目标 key 是否在该 Data Block 中
+   - **选择原因**: 
+     - 如果使用第一个 key，无法判断 key 是否在 Block 末尾
+     - 使用最后一个 key，可以确定：`last_key >= target_key` 时，该 Block 可能包含目标
+
+2. **Value (BlockHandle)**:
+   - **Offset (8 bytes)**: Data Block 在 SSTable 文件中的字节偏移量
+   - **Size (8 bytes)**: Data Block 的字节大小
+   - **用途**: 定位和读取 Data Block
+
+**查找算法**:
+
+```
+查找 key="target" 的流程:
+
+1. 读取 Footer，获取 Index Block 的位置
+2. 读取 Index Block
+3. 在 Index Block 中进行二分查找:
+   - 找到最后一个 key >= "target" 的 Index Entry
+   - 该 Entry 对应的 Data Block 可能包含 "target"
+4. 读取对应的 Data Block
+5. 在 Data Block 中查找 "target"
+```
+
+**示例**:
+
+```
+SSTable 文件结构:
+Data Block 0: ["apple", "application", "apply", "banana"]
+Data Block 1: ["band", "bank", "base", "cherry"]
+Data Block 2: ["city", "class", "clear", "cloud"]
+
+Index Block Entries:
+Entry 0: key="banana",  BlockHandle{offset=0,   size=200}
+Entry 1: key="cherry",  BlockHandle{offset=200, size=180}
+Entry 2: key="cloud",   BlockHandle{offset=380, size=190}
+
+查找 "bank":
+1. 在 Index Block 中二分查找，找到 Entry 1 (key="cherry" >= "bank")
+2. 读取 Data Block 1 (offset=200, size=180)
+3. 在 Data Block 1 中查找 "bank"
+```
+
+**性能优势**:
+- **I/O 减少**: 只需读取 1 个 Index Block + 1 个 Data Block，而不是所有 Block
+- **查找效率**: Index Block 通常很小（< 4KB），可以完全加载到内存
+- **缓存友好**: Index Block 可以长期缓存，提高重复查询性能
+
+#### Meta Block 格式
+
+**Meta Block 的作用**:
+- **快速过滤**: 使用 Bloom Filter 快速判断 key 是否不存在
+- **统计信息**: 存储 Block 的统计信息（可选）
+- **扩展性**: 支持未来添加其他元数据
+
+**Meta Block 类型**:
+
+1. **Bloom Filter Meta Block** (最常见):
+   - **用途**: 快速判断 key 是否不存在，避免不必要的 Block 读取
+   - **格式**: 
+     ```
+     ┌─────────────────────────────────────────────────────────┐
+     │ Filter Data (Bloom Filter 位数组)                        │
+     │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+     │  │ Bit 0-7  │  │ Bit 8-15 │  │ Bit 16-23│  │ ...    │  │
+     │  └──────────┘  └──────────┘  └──────────┘  └────────┘  │
+     └─────────────────────────────────────────────────────────┘
+     ┌─────────────────────────────────────────────────────────┐
+     │ Filter Size (4 bytes)                                    │
+     └─────────────────────────────────────────────────────────┘
+     ```
+   - **Bloom Filter 参数**:
+     - **Hash 函数数量**: 通常 10-15 个
+     - **位数组大小**: 根据数据量计算，通常每个 key 10 bits
+     - **误判率**: 通常 < 1%
+
+2. **Statistics Meta Block** (可选):
+   - **用途**: 存储 SSTable 的统计信息
+   - **格式**:
+     ```
+     ┌─────────────────────────────────────────────────────────┐
+     │ Key-Value Pairs (文本格式或二进制格式)                   │
+     │  ┌──────────┬──────────────────────────────────────┐   │
+     │  │ "num_keys"│ "1000000"                           │   │
+     │  ├──────────┼──────────────────────────────────────┤   │
+     │  │ "data_size"│ "10485760"                         │   │
+     │  ├──────────┼──────────────────────────────────────┤   │
+     │  │ "index_size"│ "4096"                            │   │
+     │  └──────────┴──────────────────────────────────────┘   │
+     └─────────────────────────────────────────────────────────┘
+     ```
+   - **统计信息内容**:
+     - `num_keys`: 总 key 数量
+     - `data_size`: Data Block 总大小
+     - `index_size`: Index Block 大小
+     - `filter_size`: Bloom Filter 大小
+     - `min_key`: 最小 key
+     - `max_key`: 最大 key
+
+**Meta Block 查找流程**:
+
+```
+1. 从 Footer 读取 Meta Block Handle
+2. 读取 Meta Block
+3. 根据 Meta Block 类型解析内容:
+   - Bloom Filter: 检查 key 是否可能存在
+   - Statistics: 读取统计信息（用于优化）
+```
+
+**Bloom Filter 使用示例**:
+
+```
+查找 key="target" 的优化流程:
+
+1. 读取 Meta Block (Bloom Filter)
+2. 检查 Bloom Filter:
+   if (!bloom_filter->MayContain("target")) {
+       return NotFound;  // 快速返回，无需读取 Data Block
+   }
+3. 如果 Bloom Filter 返回 true，继续正常的查找流程:
+   - 读取 Index Block
+   - 查找对应的 Data Block
+   - 在 Data Block 中查找
+```
+
+**性能优势**:
+- **快速否定**: Bloom Filter 可以快速判断 key 不存在，避免 99% 的不必要 I/O
+- **空间效率**: Bloom Filter 通常只占用每个 key 10 bits，空间开销小
+- **I/O 减少**: 对于不存在的 key，只需读取 Meta Block（通常 < 1KB），而不是整个 Data Block（通常 4-64KB）
+
+**Meta Block 命名约定**:
+
+```
+Meta Block 通过名称标识:
+- "filter.<policy>": Bloom Filter（如 "filter.bloom")
+- "stats": 统计信息
+- 未来可以扩展: "compression", "encryption" 等
 ```
 
 #### Footer 格式
@@ -328,14 +652,63 @@ Entry 1: key="application", value="software"
 Footer (固定 48 字节):
 ┌─────────────────────────────────────────────────────────┐
 │ Index Block Handle (offset + size, 16 bytes)            │
+│  ┌──────────────┬────────────────────────────────────┐ │
+│  │ Offset       │ Size                               │ │
+│  │ (8 bytes)    │ (8 bytes)                          │ │
+│  └──────────────┴────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────┤
 │ Meta Block Handle (offset + size, 16 bytes)              │
+│  ┌──────────────┬────────────────────────────────────┐ │
+│  │ Offset       │ Size                               │ │
+│  │ (8 bytes)    │ (8 bytes)                          │ │
+│  └──────────────┴────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────┤
 │ Padding (8 bytes)                                        │
+│  (用于对齐，内容未定义)                                   │
 ├─────────────────────────────────────────────────────────┤
 │ Magic Number (8 bytes) = 0xdb4775248b80fb57             │
+│  (用于验证文件格式)                                       │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Footer 字段说明**:
+
+1. **Index Block Handle**:
+   - **Offset**: Index Block 在文件中的字节偏移量（从文件开头计算）
+   - **Size**: Index Block 的字节大小
+   - **用途**: 定位 Index Block，用于查找 Data Block
+
+2. **Meta Block Handle**:
+   - **Offset**: Meta Block 在文件中的字节偏移量
+   - **Size**: Meta Block 的字节大小
+   - **用途**: 定位 Meta Block（Bloom Filter、统计信息等）
+   - **注意**: 如果 Meta Block 不存在，Size = 0
+
+3. **Padding**:
+   - **大小**: 8 字节
+   - **用途**: 对齐到 8 字节边界，提高读取效率
+   - **内容**: 未定义，通常为 0
+
+4. **Magic Number**:
+   - **值**: `0xdb4775248b80fb57` (固定值)
+   - **用途**: 
+     - 验证文件格式是否正确
+     - 检测文件损坏
+     - 区分不同版本的文件格式
+
+**Footer 读取流程**:
+
+```
+1. 从文件末尾读取最后 48 字节
+2. 验证 Magic Number 是否正确
+3. 如果正确，解析 Index Block 和 Meta Block 的位置
+4. 如果错误，返回文件格式错误
+```
+
+**设计优势**:
+- **固定大小**: 48 字节固定大小，便于快速读取
+- **文件末尾**: 放在文件末尾，写入时最后写入，保证原子性
+- **自验证**: Magic Number 提供格式验证
 
 ### 5.3 SSTable 实现
 

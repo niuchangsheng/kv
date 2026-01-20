@@ -115,7 +115,7 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 │   └── test_db.cpp # 单元测试代码
 └── build/                 # 构建输出目录
     └── bin/               # 二进制文件目录
-        ├── libkv_engine_lib.a  # 静态库
+        ├── libkv_lib.a  # 静态库
         └── test_db      # 测试可执行文件
 ```
 

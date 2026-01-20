@@ -404,14 +404,14 @@ void test_new_feature() {
 在`src/CMakeLists.txt`中添加：
 
 ```cmake
-add_library(kv_engine_lib
+add_library(kv_lib
     db.cpp
     status.cpp
     # ... existing files ...
     new_file.cpp  # 新文件
 )
 
-target_sources(kv_engine_lib
+target_sources(kv_lib
     PUBLIC
         FILE_SET HEADERS
         FILES

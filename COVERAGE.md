@@ -116,7 +116,7 @@ make
 ./bin/kv_bench 1000
 ```
 
-运行测试后，会在 `build/src/CMakeFiles/kv_engine_lib.dir/` 目录下生成 `.gcda` 文件（覆盖率数据文件）。
+运行测试后，会在 `build/src/CMakeFiles/kv_lib.dir/` 目录下生成 `.gcda` 文件（覆盖率数据文件）。
 
 #### 步骤4: 生成覆盖率报告
 
@@ -167,7 +167,7 @@ echo "Coverage report generated at: build/coverage/index.html"
 #### 步骤4: 使用gcov生成报告
 
 ```bash
-cd build/src/CMakeFiles/kv_engine_lib.dir
+cd build/src/CMakeFiles/kv_lib.dir
 
 # 为每个源文件生成覆盖率报告
 gcov -b -r status.cpp
@@ -189,7 +189,7 @@ cat status.cpp.gcov | head -50
 
 ```bash
 # 查看所有文件的覆盖率摘要
-cd build/src/CMakeFiles/kv_engine_lib.dir
+cd build/src/CMakeFiles/kv_lib.dir
 for file in *.cpp; do
     echo "=== $file ==="
     gcov -b "$file" 2>&1 | grep -E "(File|Lines|Branches|Taken|Functions)"

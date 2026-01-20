@@ -3,7 +3,7 @@
 #include <vector>
 #include <map>
 
-class KVEngineTest : public ::testing::Test {
+class DBTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Each test gets a fresh database instance
@@ -19,7 +19,7 @@ protected:
     ReadOptions read_options_;
 };
 
-TEST_F(KVEngineTest, PutGet) {
+TEST_F(DBTest, PutGet) {
     DB* db;
     Status status = DB::Open(options_, "/tmp/testdb_put_get", &db);
     ASSERT_TRUE(status.ok());
@@ -41,7 +41,7 @@ TEST_F(KVEngineTest, PutGet) {
     delete db;
 }
 
-TEST_F(KVEngineTest, Delete) {
+TEST_F(DBTest, Delete) {
     DB* db;
     Status status = DB::Open(options_, "/tmp/testdb_delete", &db);
     ASSERT_TRUE(status.ok());
@@ -71,7 +71,7 @@ TEST_F(KVEngineTest, Delete) {
     delete db;
 }
 
-TEST_F(KVEngineTest, WriteBatch) {
+TEST_F(DBTest, WriteBatch) {
     DB* db;
     Status status = DB::Open(options_, "/tmp/testdb_batch", &db);
     ASSERT_TRUE(status.ok());
@@ -98,7 +98,7 @@ TEST_F(KVEngineTest, WriteBatch) {
     delete db;
 }
 
-TEST_F(KVEngineTest, MultipleValues) {
+TEST_F(DBTest, MultipleValues) {
     DB* db;
     Status status = DB::Open(options_, "/tmp/testdb_multi", &db);
     ASSERT_TRUE(status.ok());
@@ -373,7 +373,7 @@ TEST_F(DataCorrectnessTest, IteratorDataCorrectness) {
 }
 
 // DestroyDB test
-TEST_F(KVEngineTest, DestroyDB) {
+TEST_F(DBTest, DestroyDB) {
     // Create a database
     DB* db;
     Status status = DB::Open(options_, "/tmp/testdb_destroy", &db);

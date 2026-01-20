@@ -8,7 +8,7 @@ add_executable(test_db
 
 # Link the KV engine library and GTest to the test
 target_link_libraries(test_db
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )
@@ -19,7 +19,7 @@ add_executable(test_status
 )
 
 target_link_libraries(test_status
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )
@@ -30,7 +30,7 @@ add_executable(test_write_batch
 )
 
 target_link_libraries(test_write_batch
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )
@@ -41,7 +41,7 @@ add_executable(test_iterator
 )
 
 target_link_libraries(test_iterator
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )
@@ -52,7 +52,7 @@ add_executable(test_options
 )
 
 target_link_libraries(test_options
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )
@@ -64,7 +64,7 @@ add_executable(kv_bench
 
 # Link the KV engine library to the benchmark
 target_link_libraries(kv_bench
-    kv_engine_lib
+    kv_lib
 )
 
 # Create the long-running data correctness test executable
@@ -74,7 +74,7 @@ add_executable(kv_data_correctness
 
 # Link the KV engine library and GTest to the data correctness test
 target_link_libraries(kv_data_correctness
-    kv_engine_lib
+    kv_lib
     GTest::gtest
     GTest::gtest_main
 )

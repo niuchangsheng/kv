@@ -9,10 +9,10 @@ add_subdirectory(core)
 
 # Create the main library that aggregates all modules
 # This is the library that external code (tests, benchmarks) will link against
-add_library(kv_engine_lib INTERFACE)
+add_library(kv_lib INTERFACE)
 
 # Link all submodules to the main library
-target_link_libraries(kv_engine_lib
+target_link_libraries(kv_lib
     INTERFACE
         core_lib
 )
