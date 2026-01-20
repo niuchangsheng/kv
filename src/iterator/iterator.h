@@ -1,7 +1,7 @@
 #ifndef ITERATOR_H
 #define ITERATOR_H
 
-#include "status.h"
+#include "common/status.h"
 #include <string>
 
 // An iterator yields a sequence of key/value pairs from a source.

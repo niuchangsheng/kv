@@ -1,5 +1,5 @@
-#include "write_batch.h"
-#include "status.h"
+#include "batch/write_batch.h"
+#include "common/status.h"
 #include <vector>
 #include <string>
 

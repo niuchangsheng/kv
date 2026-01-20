@@ -1,4 +1,4 @@
-#include "db_iterator.h"
+#include "iterator/db_iterator.h"
 
 DBIterator::DBIterator(const std::unordered_map<std::string, std::string>& data) : current_index_(0), status_(Status::OK()) {
     // Convert unordered_map to sorted vector for iteration

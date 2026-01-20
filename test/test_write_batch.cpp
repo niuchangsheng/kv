@@ -1,5 +1,5 @@
-#include "db.h"
-#include "write_batch.h"
+#include "core/db.h"
+#include "batch/write_batch.h"
 #include <gtest/gtest.h>
 
 class WriteBatchTest : public ::testing::Test {

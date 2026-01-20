@@ -1,7 +1,7 @@
 #ifndef WRITE_BATCH_H
 #define WRITE_BATCH_H
 
-#include "status.h"
+#include "common/status.h"
 #include <string>
 #include <vector>
 

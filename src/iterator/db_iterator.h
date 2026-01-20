@@ -1,7 +1,7 @@
 #ifndef DB_ITERATOR_H
 #define DB_ITERATOR_H
 
-#include "iterator.h"
+#include "iterator/iterator.h"
 #include <unordered_map>
 #include <string>
 #include <vector>

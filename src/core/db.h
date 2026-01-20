@@ -1,10 +1,10 @@
 #ifndef DB_H
 #define DB_H
 
-#include "status.h"
-#include "options.h"
-#include "iterator.h"
-#include "write_batch.h"
+#include "common/status.h"
+#include "common/options.h"
+#include "iterator/iterator.h"
+#include "batch/write_batch.h"
 #include <string>
 #include <unordered_map>
 
