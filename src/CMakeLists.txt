@@ -1,6 +1,6 @@
 # Create a library from the KV engine source files
 add_library(kv_engine_lib
-    kv_engine.cpp
+    db.cpp
     status.cpp
     options.cpp
     iterator.cpp
@@ -13,7 +13,7 @@ target_sources(kv_engine_lib
     PUBLIC
         FILE_SET HEADERS
         FILES
-            kv_engine.h
+            db.h
             status.h
             options.h
             iterator.h

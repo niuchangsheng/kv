@@ -5,7 +5,7 @@
 本文档说明如何生成测试覆盖率报告，并分析当前测试代码的覆盖情况。
 
 **生成时间**: 2025-01-19  
-**测试文件**: `test/test_kv_engine.cpp`  
+**测试文件**: `test/test_db.cpp`  
 **测试用例数**: 5个主要测试函数
 
 ---
@@ -110,7 +110,7 @@ make
 
 ```bash
 # 运行单元测试
-./bin/test_kv_engine
+./bin/test_db
 
 # 运行性能测试（可选）
 ./bin/kv_bench 1000
@@ -172,7 +172,7 @@ cd build/src/CMakeFiles/kv_engine_lib.dir
 # 为每个源文件生成覆盖率报告
 gcov -b -r status.cpp
 gcov -b -r options.cpp
-gcov -b -r kv_engine.cpp
+gcov -b -r db.cpp
 gcov -b -r write_batch.cpp
 gcov -b -r iterator.cpp
 gcov -b -r db_iterator.cpp
@@ -257,7 +257,7 @@ make
 
 # 运行测试
 echo "Running tests..."
-./bin/test_kv_engine
+./bin/test_db
 
 # 生成报告
 echo "Generating coverage report..."
@@ -314,7 +314,7 @@ chmod +x scripts/generate_coverage.sh
 |------|------|---------|-----------|------|
 | `status.cpp` | 31 | 部分 | ~60% | ⚠️ 需改进 |
 | `options.cpp` | 18 | 基本 | ~80% | ✅ 良好 |
-| `kv_engine.cpp` | 69 | 大部分 | ~85% | ✅ 良好 |
+| `db.cpp` | 69 | 大部分 | ~85% | ✅ 良好 |
 | `write_batch.cpp` | 44 | 大部分 | ~80% | ✅ 良好 |
 | `iterator.cpp` | 5 | 完全 | ~100% | ✅ 优秀 |
 | `db_iterator.cpp` | 68 | 部分 | ~70% | ⚠️ 需改进 |
@@ -377,7 +377,7 @@ jobs:
       - name: Run tests
         run: |
           cd build
-          ./bin/test_kv_engine
+          ./bin/test_db
       
       - name: Generate coverage
         run: |

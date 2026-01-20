@@ -57,10 +57,10 @@
 
 #### 头文件保护
 ```cpp
-#ifndef KV_ENGINE_H
-#define KV_ENGINE_H
+#ifndef DB_H
+#define DB_H
 // ... code ...
-#endif // KV_ENGINE_H
+#endif // DB_H
 ```
 
 #### 包含顺序
@@ -70,7 +70,7 @@
 4. 第三方库头文件
 
 ```cpp
-#include "kv_engine.h"        // 对应头文件
+#include "db.h"        // 对应头文件
 #include "status.h"            // 项目内部
 #include <string>              // 标准库
 #include <unordered_map>       // 标准库
@@ -129,28 +129,28 @@ DB* db = new DB();  // 应该使用DB::Open
 ```
 kv/
 ├── src/                    # 源代码
-│   ├── kv_engine.h/cpp     # 主DB接口
+│   ├── db.h/cpp     # 主DB接口
 │   ├── status.h/cpp        # 状态管理
 │   ├── options.h/cpp       # 配置选项
 │   ├── iterator.h/cpp      # 迭代器接口
 │   ├── write_batch.h/cpp   # 批量操作
 │   └── db_iterator.h/cpp  # 迭代器实现
 ├── test/                   # 单元测试
-│   └── test_kv_engine.cpp
+│   └── test_db.cpp
 ├── docs/                   # 文档
-│   └── DESIGN.md          # 设计文档
+│   └── ARCHITECTURE.md          # 架构设计文档
 └── build/bin/             # 构建输出
 ```
 
 ### 文件命名
 
-- **头文件**: `snake_case.h` (如 `kv_engine.h`, `write_batch.h`)
-- **源文件**: `snake_case.cpp` (如 `kv_engine.cpp`, `write_batch.cpp`)
-- **测试文件**: `test_*.cpp` (如 `test_kv_engine.cpp`)
+- **头文件**: `snake_case.h` (如 `db.h`, `write_batch.h`)
+- **源文件**: `snake_case.cpp` (如 `db.cpp`, `write_batch.cpp`)
+- **测试文件**: `test_*.cpp` (如 `test_db.cpp`)
 
 ## 核心组件
 
-### 1. DB类 (kv_engine.h/cpp)
+### 1. DB类 (db.h/cpp)
 
 **职责**: 主数据库接口，提供CRUD操作
 
@@ -377,7 +377,7 @@ Iterator* NewIterator(const ReadOptions& options);
 3. **测试函数命名**: `test_*()` 或使用Google Test的`TEST()`宏
 
 ```cpp
-// test/test_kv_engine.cpp
+// test/test_db.cpp
 void test_new_feature() {
     // 测试代码
     Options options;
@@ -405,7 +405,7 @@ void test_new_feature() {
 
 ```cmake
 add_library(kv_engine_lib
-    kv_engine.cpp
+    db.cpp
     status.cpp
     # ... existing files ...
     new_file.cpp  # 新文件
@@ -415,7 +415,7 @@ target_sources(kv_engine_lib
     PUBLIC
         FILE_SET HEADERS
         FILES
-            kv_engine.h
+            db.h
             # ... existing headers ...
             new_file.h  # 新头文件
 )
@@ -502,7 +502,7 @@ Closes #123
 
 ## 参考文档
 
-- **设计文档**: `docs/DESIGN.md` - 详细的High/Low Level设计
+- **设计文档**: `docs/ARCHITECTURE.md` - 详细的High/Low Level设计
 - **技能要求**: `SKILLS.md` - 开发所需技能
 - **README**: `README.md` - 项目概述和使用指南
 

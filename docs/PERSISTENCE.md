@@ -687,7 +687,7 @@ private:
 
 ## 11. 读性能 Scale Out 和一致性视图
 
-> **注意**: 读性能 Scale Out 和一致性视图的详细设计已拆分为独立文档，请参考 [读性能 Scale Out 和一致性视图设计文档](READ_SCALE_OUT_DESIGN.md)。
+> **注意**: 读性能 Scale Out 和一致性视图的详细设计已拆分为独立文档，请参考 [读性能 Scale Out 和一致性视图设计文档](READ_SCALE_OUT.md)。
 
 该文档包含以下内容：
 - 多版本并发控制 (MVCC) 设计

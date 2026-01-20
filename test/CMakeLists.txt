@@ -2,12 +2,12 @@
 find_package(GTest REQUIRED)
 
 # Create the test executable
-add_executable(test_kv_engine
-    test_kv_engine.cpp
+add_executable(test_db
+    test_db.cpp
 )
 
 # Link the KV engine library and GTest to the test
-target_link_libraries(test_kv_engine
+target_link_libraries(test_db
     kv_engine_lib
     GTest::gtest
     GTest::gtest_main
@@ -84,8 +84,8 @@ target_link_libraries(kv_data_correctness
 # ============================================================================
 
 add_test(
-    NAME test_kv_engine
-    COMMAND test_kv_engine
+    NAME test_db
+    COMMAND test_db
 )
 
 add_test(

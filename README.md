@@ -100,11 +100,11 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 ├── SKILLS.md              # 技能要求文档
 ├── AGENTS.md              # AI代理配置指南
 ├── docs/                  # 项目文档
-│   └── DESIGN.md          # 系统设计文档（High/Low Level Design）
+│   └── ARCHITECTURE.md          # 系统架构设计文档（High/Low Level Design）
 ├── src/                   # 源代码
 │   ├── CMakeLists.txt     # 源码构建配置
-│   ├── kv_engine.h        # 主接口头文件
-│   ├── kv_engine.cpp      # 主接口实现
+│   ├── db.h        # 主接口头文件
+│   ├── db.cpp      # 主接口实现
 │   ├── status.h/cpp       # 状态管理
 │   ├── options.h/cpp      # 配置选项
 │   ├── iterator.h/cpp     # 迭代器接口
@@ -112,11 +112,11 @@ cmake .. -DgRPC_BUILD_TESTS=OFF && make -j$(nproc) && sudo make install
 │   └── db_iterator.h/cpp  # 迭代器实现
 ├── test/                  # 单元测试
 │   ├── CMakeLists.txt     # 测试构建配置
-│   └── test_kv_engine.cpp # 单元测试代码
+│   └── test_db.cpp # 单元测试代码
 └── build/                 # 构建输出目录
     └── bin/               # 二进制文件目录
         ├── libkv_engine_lib.a  # 静态库
-        └── test_kv_engine      # 测试可执行文件
+        └── test_db      # 测试可执行文件
 ```
 
 ## 构建（CMake）
@@ -140,7 +140,7 @@ cmake --build build --config Release
 ## 快速使用示例
 
 ```cpp
-#include "kv_engine.h"
+#include "db.h"
 
 int main() {
     // 打开数据库
