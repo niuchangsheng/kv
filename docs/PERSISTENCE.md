@@ -326,6 +326,36 @@ Data Block:
 - **重启点 Entry**: 在重启点位置的 Entry，`shared_len = 0`，存储完整的 key
 - **重启点数组**: 存储每个重启点在 Block 内的字节偏移量（相对于 Block 起始位置）
 - **重启点数量**: 存储在 Block 末尾，用于确定重启点数组的大小
+- **依赖链中断**: 重启点的 `shared_len = 0` 中断了 key 重建的依赖链，每个重启点可以独立重建 key
+
+**Key 重建依赖链**:
+
+重启点不仅用于快速定位，还用于**中断共享前缀的依赖链**：
+
+```
+依赖链示例（无重启点）:
+Entry 0:  key="a",      shared=0  ← 起始点
+Entry 1:  key="ab",     shared=1  (依赖 Entry 0)
+Entry 2:  key="abc",    shared=2  (依赖 Entry 1，Entry 1 依赖 Entry 0)
+Entry 3:  key="abcd",   shared=3  (依赖 Entry 2，Entry 2 依赖 Entry 1，Entry 1 依赖 Entry 0)
+...
+Entry 100: key="abc...", shared=100 (依赖链长度为 100)
+
+有重启点（间隔 16）:
+Entry 0:  key="a",      shared=0  ← 重启点 0
+Entry 1:  key="ab",     shared=1  (依赖 Entry 0)
+...
+Entry 15: key="abc...", shared=15 (依赖链长度 15)
+Entry 16: key="xyz",    shared=0  ← 重启点 1（中断依赖链）
+Entry 17: key="xyza",   shared=3  (依赖 Entry 16，不依赖 Entry 15)
+...
+```
+
+**依赖链中断的好处**:
+- **限制依赖深度**: 最大依赖链长度 = 重启点间隔（通常 16）
+- **错误隔离**: 如果某个 Entry 损坏，只需要重新解码该重启点区间
+- **并行解码**: 不同重启点区间可以并行解码（高级优化）
+- **内存效率**: 不需要保存所有已解码的 key，只需要保存当前重启点区间的 key
 
 **查找算法**:
 ```
@@ -353,7 +383,32 @@ Entry 31: key="cherry",    shared=0, offset=400  ← 重启点 2
 
 查找 "banana":
 1. 二分查找重启点数组，找到重启点 1 (offset=200) 包含 "banana"
-2. 从 offset=200 开始顺序解码，Entry 15 就是 "banana"
+2. 从重启点 1 (offset=200) 开始顺序解码:
+   - Entry 15: shared_len=0, key="banana" (完整存储，无需依赖)
+   - 如果 Entry 15 不是目标，继续解码 Entry 16:
+     * Entry 16: shared_len=5, 需要 Entry 15 的完整 key
+     * key = "banana".substr(0, 5) + "d" = "banan" + "d" = "band"
+3. 找到目标 key 或超出范围后停止
+```
+
+**从重启点开始的 Key 重建示例**:
+
+```
+假设查找 "band"（在重启点 1 之后）:
+
+1. 定位到重启点 1 (Entry 15, key="banana", shared_len=0)
+   - 完整 key: "banana" (直接读取)
+
+2. 顺序解码后续 Entry:
+   Entry 16: shared_len=5, non_shared="d"
+   - 需要 Entry 15 的完整 key: "banana"
+   - 重建: "banana".substr(0, 5) + "d" = "banan" + "d" = "band"
+   - 找到目标 key "band"
+
+如果 Entry 16 不是目标，继续:
+   Entry 17: shared_len=4, non_shared="k"
+   - 需要 Entry 16 的完整 key: "band" (已重建)
+   - 重建: "band".substr(0, 4) + "k" = "ban" + "k" = "bank"
 ```
 
 **性能优势**:
@@ -432,6 +487,111 @@ Entry Format:
 5. **Value (值)**:
    - **类型**: 字节数组
    - **用途**: 完整的 value 数据
+
+**Key 重建算法**:
+
+由于每个 Entry 的 key 依赖于前一个 Entry 的完整 key，重建过程必须**顺序进行**：
+
+```
+Key 重建流程:
+
+1. Entry 0 (shared_len = 0):
+   - 完整 key 直接存储，无需重建
+   - current_key = non_shared_key
+
+2. Entry 1 (shared_len = 3):
+   - 需要前一个 Entry (Entry 0) 的完整 key
+   - current_key = previous_key.substr(0, 3) + non_shared_key
+   - 例如: previous_key = "apple", shared_len = 3, non_shared = "lication"
+   - current_key = "app" + "lication" = "application"
+
+3. Entry 2 (shared_len = 5):
+   - 需要前一个 Entry (Entry 1) 的完整 key（Entry 1 可能也是重建的）
+   - current_key = previous_key.substr(0, 5) + non_shared_key
+   - 例如: previous_key = "application" (已重建), shared_len = 5, non_shared = "y"
+   - current_key = "appli" + "y" = "apply"
+```
+
+**连续共享前缀的处理**:
+
+当多个连续的 Entry 都有共享前缀时，重建过程是**链式的**，但**不需要递归**：
+
+```
+示例数据:
+Entry 0: key="user:profile:name",    shared_len=0,  non_shared="user:profile:name"
+Entry 1: key="user:profile:age",      shared_len=13, non_shared="age"
+Entry 2: key="user:profile:email",   shared_len=13, non_shared="email"
+Entry 3: key="user:profile:phone",    shared_len=13, non_shared="phone"
+
+重建过程:
+1. Entry 0: 
+   key = "user:profile:name" (直接读取，shared_len=0)
+
+2. Entry 1:
+   previous_key = "user:profile:name" (已重建)
+   key = previous_key.substr(0, 13) + "age"
+      = "user:profile:" + "age"
+      = "user:profile:age"
+
+3. Entry 2:
+   previous_key = "user:profile:age" (已重建，来自 Entry 1)
+   key = previous_key.substr(0, 13) + "email"
+      = "user:profile:" + "email"
+      = "user:profile:email"
+
+4. Entry 3:
+   previous_key = "user:profile:email" (已重建，来自 Entry 2)
+   key = previous_key.substr(0, 13) + "phone"
+      = "user:profile:" + "phone"
+      = "user:profile:phone"
+```
+
+**关键点**:
+
+1. **顺序依赖**: 每个 Entry 的 key 重建依赖于前一个 Entry 的**完整 key**（不是原始存储的 key）
+2. **无需递归**: 不需要递归查找，因为读取是顺序的，前一个 Entry 的完整 key 已经重建
+3. **链式重建**: 重建过程是链式的，每个 Entry 使用前一个已重建的完整 key
+4. **重启点优化**: 在重启点处，`shared_len = 0`，存储完整 key，可以中断依赖链
+
+**实现伪代码**:
+
+```cpp
+std::string RebuildKey(const Entry& entry, const std::string& previous_full_key) {
+    if (entry.shared_len == 0) {
+        // 重启点或第一个 Entry，完整存储
+        return entry.non_shared_key;
+    } else {
+        // 使用前一个完整 key 的共享部分
+        return previous_full_key.substr(0, entry.shared_len) + entry.non_shared_key;
+    }
+}
+
+// 顺序解码所有 Entry
+std::string previous_key;
+for (const auto& entry : entries) {
+    std::string current_key = RebuildKey(entry, previous_key);
+    // 使用 current_key 和 entry.value
+    previous_key = current_key;  // 保存完整 key 供下一个 Entry 使用
+}
+```
+
+**重启点的作用**:
+
+重启点不仅用于快速定位，还用于**中断共享前缀依赖链**：
+
+```
+Entry 0:  key="apple",     shared_len=0  ← 重启点
+Entry 1:  key="application", shared_len=3  (依赖 Entry 0)
+Entry 2:  key="apply",      shared_len=3  (依赖 Entry 1)
+...
+Entry 15: key="banana",    shared_len=0  ← 重启点（中断依赖链）
+Entry 16: key="band",       shared_len=5  (依赖 Entry 15，不依赖 Entry 14)
+```
+
+这样设计的好处：
+- **减少依赖链长度**: 重启点限制依赖链最大长度为重启点间隔（通常 16）
+- **并行解码**: 不同重启点之间的 Entry 可以并行解码（高级优化）
+- **错误隔离**: 如果某个 Entry 损坏，影响范围限制在重启点之间
 
 **压缩效果示例**:
 
