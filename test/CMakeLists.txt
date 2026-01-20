@@ -1,78 +1,29 @@
+# Main CMakeLists.txt for test directory
+# This file aggregates all test submodules
+
 # Find Google Test
 find_package(GTest REQUIRED)
 
-# Create the test executable
-add_executable(test_db
-    test_db.cpp
-)
+# Add test subdirectories in dependency order
+add_subdirectory(common)
+add_subdirectory(iterator)
+add_subdirectory(batch)
+add_subdirectory(core)
 
-# Link the KV engine library and GTest to the test
-target_link_libraries(test_db
-    kv_lib
-    GTest::gtest
-    GTest::gtest_main
-)
-
-# Create test_status executable
-add_executable(test_status
-    test_status.cpp
-)
-
-target_link_libraries(test_status
-    kv_lib
-    GTest::gtest
-    GTest::gtest_main
-)
-
-# Create test_write_batch executable
-add_executable(test_write_batch
-    test_write_batch.cpp
-)
-
-target_link_libraries(test_write_batch
-    kv_lib
-    GTest::gtest
-    GTest::gtest_main
-)
-
-# Create test_iterator executable
-add_executable(test_iterator
-    test_iterator.cpp
-)
-
-target_link_libraries(test_iterator
-    kv_lib
-    GTest::gtest
-    GTest::gtest_main
-)
-
-# Create test_options executable
-add_executable(test_options
-    test_options.cpp
-)
-
-target_link_libraries(test_options
-    kv_lib
-    GTest::gtest
-    GTest::gtest_main
-)
-
-# Create the benchmark executable
+# Benchmark executable (not a unit test)
 add_executable(kv_bench
     kv_bench.cpp
 )
 
-# Link the KV engine library to the benchmark
 target_link_libraries(kv_bench
     kv_lib
 )
 
-# Create the long-running data correctness test executable
+# Long-running data correctness test
 add_executable(kv_data_correctness
     kv_data_correctness.cpp
 )
 
-# Link the KV engine library and GTest to the data correctness test
 target_link_libraries(kv_data_correctness
     kv_lib
     GTest::gtest
