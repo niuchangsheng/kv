@@ -753,6 +753,176 @@ Index Block 布局:
      - 如果使用第一个 key，无法判断 key 是否在 Block 末尾
      - 使用最后一个 key，可以确定：`last_key >= target_key` 时，该 Block 可能包含目标
 
+**为什么使用最后一个 key 而不是第一个 key？**
+
+这是一个关键的二分查找设计决策，原因如下：
+
+**使用第一个 key 的问题**:
+
+```
+假设 Index Entry 使用第一个 key:
+
+Data Block 0: ["apple", "application", "apply", "banana"]
+Data Block 1: ["band", "bank", "base", "cherry"]
+Data Block 2: ["city", "class", "clear", "cloud"]
+
+Index Block (使用第一个 key):
+Entry 0: key="apple",   BlockHandle{offset=0,   size=200}
+Entry 1: key="band",    BlockHandle{offset=200, size=180}
+Entry 2: key="city",    BlockHandle{offset=380, size=190}
+
+查找 "banana":
+1. 二分查找 Index Block:
+   - Entry 0: "apple" < "banana" ✓
+   - Entry 1: "band" > "banana" ✗ (错误！"banana" 在 Block 0 中，不在 Block 1)
+   - 错误地选择 Block 1，实际应该在 Block 0
+
+问题：使用第一个 key 无法判断目标 key 是否在 Block 的末尾部分
+```
+
+**使用最后一个 key 的优势**:
+
+```
+使用最后一个 key:
+
+Index Block (使用最后一个 key):
+Entry 0: key="banana",  BlockHandle{offset=0,   size=200}  ← Block 0 的最后一个 key
+Entry 1: key="cherry",  BlockHandle{offset=200, size=180}  ← Block 1 的最后一个 key
+Entry 2: key="cloud",   BlockHandle{offset=380, size=190}  ← Block 2 的最后一个 key
+
+查找 "banana":
+1. 二分查找 Index Block:
+   - Entry 0: "banana" >= "banana" ✓ (Block 0 可能包含 "banana")
+   - 读取 Block 0，找到 "banana"
+
+查找 "bank":
+1. 二分查找 Index Block:
+   - Entry 0: "banana" < "bank" ✗
+   - Entry 1: "cherry" >= "bank" ✓ (Block 1 可能包含 "bank")
+   - 读取 Block 1，找到 "bank"
+
+查找 "base":
+1. 二分查找 Index Block:
+   - Entry 0: "banana" < "base" ✗
+   - Entry 1: "cherry" >= "base" ✓ (Block 1 可能包含 "base")
+   - 读取 Block 1，找到 "base"
+```
+
+**二分查找逻辑**:
+
+```
+查找算法（使用最后一个 key）:
+
+在 Index Block 中二分查找，找到满足以下条件的 Index Entry:
+  last_key >= target_key
+
+这个条件的含义:
+- 如果 last_key >= target_key，说明 target_key 可能在这个 Block 中
+- 如果 last_key < target_key，说明 target_key 肯定不在这个 Block 中（在后面的 Block）
+
+为什么这样判断是正确的:
+1. Data Block 中的 key 是有序的（从小到大）
+2. 如果 target_key <= last_key，那么 target_key 可能在 [first_key, last_key] 范围内
+3. 如果 target_key > last_key，那么 target_key 肯定不在这个 Block 中
+```
+
+**边界情况分析**:
+
+```
+情况 1: target_key 等于某个 Block 的最后一个 key
+  Data Block 0: ["apple", "banana"]
+  Index Entry 0: key="banana"
+  
+  查找 "banana":
+    "banana" >= "banana" ✓ → 读取 Block 0 → 找到 ✓
+
+情况 2: target_key 在 Block 中间
+  Data Block 0: ["apple", "application", "apply", "banana"]
+  Index Entry 0: key="banana"
+  
+  查找 "application":
+    "banana" >= "application" ✓ → 读取 Block 0 → 找到 ✓
+
+情况 3: target_key 在 Block 开头
+  Data Block 0: ["apple", "application", "apply", "banana"]
+  Index Entry 0: key="banana"
+  
+  查找 "apple":
+    "banana" >= "apple" ✓ → 读取 Block 0 → 找到 ✓
+
+情况 4: target_key 不在任何 Block 中
+  Data Block 0: ["apple", "banana"]
+  Data Block 1: ["cherry", "cloud"]
+  Index Entry 0: key="banana"
+  Index Entry 1: key="cloud"
+  
+  查找 "base" (不存在):
+    Entry 0: "banana" < "base" ✗
+    Entry 1: "cloud" >= "base" ✓ → 读取 Block 1 → 未找到 → 返回 NotFound ✓
+```
+
+**与使用第一个 key 的对比**:
+
+```
+使用第一个 key 的问题示例:
+
+Data Block 0: ["apple", "application", "apply", "banana"]
+Data Block 1: ["band", "bank", "base", "cherry"]
+
+Index Block (假设使用第一个 key):
+Entry 0: key="apple"   (Block 0 的第一个 key)
+Entry 1: key="band"    (Block 1 的第一个 key)
+
+查找 "banana":
+  二分查找:
+    Entry 0: "apple" < "banana" ✓
+    Entry 1: "band" > "banana" ✗
+    选择 Block 1？错误！"banana" 在 Block 0 中
+
+问题根源:
+  - 使用第一个 key 只能判断 target_key 是否 >= first_key
+  - 但无法判断 target_key 是否 <= last_key
+  - 因此无法确定 target_key 是否在这个 Block 中
+
+使用最后一个 key 的优势:
+  - 如果 last_key >= target_key，且前一个 Block 的 last_key < target_key
+  - 那么 target_key 一定在这个 Block 中（或不存在）
+  - 判断逻辑简单且正确
+```
+
+**实际查找算法实现**:
+
+```cpp
+// 在 Index Block 中查找包含 target_key 的 Data Block
+IndexEntry* FindDataBlock(const std::string& target_key) {
+    // 二分查找，找到最后一个 last_key >= target_key 的 Index Entry
+    int left = 0, right = index_entries.size() - 1;
+    IndexEntry* result = nullptr;
+    
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        if (index_entries[mid].key >= target_key) {
+            // 这个 Block 可能包含 target_key
+            result = &index_entries[mid];
+            right = mid - 1;  // 继续向左查找，找到第一个满足条件的
+        } else {
+            // 这个 Block 的最后一个 key < target_key，肯定不包含
+            left = mid + 1;
+        }
+    }
+    
+    return result;  // 返回可能包含 target_key 的 Block
+}
+```
+
+**总结**:
+
+使用最后一个 key 的原因：
+1. **正确的边界判断**: `last_key >= target_key` 可以准确判断 target_key 是否可能在这个 Block 中
+2. **简单的查找逻辑**: 二分查找只需要比较 last_key 和 target_key
+3. **避免误判**: 不会错误地跳过包含 target_key 的 Block
+4. **统一的判断标准**: 所有 Block 使用相同的判断逻辑（last_key >= target_key）
+
 2. **Value (BlockHandle)**:
    - **Offset (8 bytes)**: Data Block 在 SSTable 文件中的字节偏移量
    - **Size (8 bytes)**: Data Block 的字节大小
