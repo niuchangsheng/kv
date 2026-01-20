@@ -757,7 +757,9 @@ Index Block 布局:
 
 这是一个关键的二分查找设计决策，原因如下：
 
-**使用第一个 key 的问题**:
+**使用第一个 key 的二分查找逻辑**:
+
+虽然使用第一个 key 也可以实现二分查找，但需要不同的查找策略：
 
 ```
 假设 Index Entry 使用第一个 key:
@@ -771,13 +773,50 @@ Entry 0: key="apple",   BlockHandle{offset=0,   size=200}
 Entry 1: key="band",    BlockHandle{offset=200, size=180}
 Entry 2: key="city",    BlockHandle{offset=380, size=190}
 
-查找 "banana":
-1. 二分查找 Index Block:
-   - Entry 0: "apple" < "banana" ✓
-   - Entry 1: "band" > "banana" ✗ (错误！"banana" 在 Block 0 中，不在 Block 1)
-   - 错误地选择 Block 1，实际应该在 Block 0
+查找 "banana" 的正确方法:
+1. 二分查找策略: 找到第一个 first_key > target_key 的位置
+2. 该位置的前一个 block 就是候选 block
 
-问题：使用第一个 key 无法判断目标 key 是否在 Block 的末尾部分
+查找过程:
+   - Entry 0: "apple" <= "banana" ✓
+   - Entry 1: "band" > "banana" ✓ (找到第一个大于的)
+   - 候选 Block 0 (Entry 1 的前一个)
+   - 读取 Block 0 → 找到 "banana" ✓
+
+查找 "bank":
+   - Entry 0: "apple" <= "bank" ✓
+   - Entry 1: "band" <= "bank" ✓
+   - Entry 2: "city" > "bank" ✓ (找到第一个大于的)
+   - 候选 Block 1 (Entry 2 的前一个)
+   - 读取 Block 1 → 找到 "bank" ✓
+```
+
+**使用第一个 key 的实现**:
+
+```cpp
+// 使用第一个 key 的二分查找
+IndexEntry* FindDataBlock_FirstKey(const std::string& target_key) {
+    // 找到第一个 first_key > target_key 的位置
+    int left = 0, right = index_entries.size();
+    int pos = right;  // 如果没找到，说明在最后一个 block
+    
+    while (left < right) {
+        int mid = (left + right) / 2;
+        if (index_entries[mid].key > target_key) {
+            pos = mid;
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+    
+    // pos 是第一个 first_key > target_key 的位置
+    // 候选 block 是 pos - 1（如果 pos > 0）
+    if (pos > 0) {
+        return &index_entries[pos - 1];
+    }
+    return nullptr;  // target_key 小于所有 first_key
+}
 ```
 
 **使用最后一个 key 的优势**:
@@ -861,33 +900,37 @@ Entry 2: key="cloud",   BlockHandle{offset=380, size=190}  ← Block 2 的最后
     Entry 1: "cloud" >= "base" ✓ → 读取 Block 1 → 未找到 → 返回 NotFound ✓
 ```
 
-**与使用第一个 key 的对比**:
+**两种方法的对比**:
+
+| 特性 | 使用第一个 key | 使用最后一个 key |
+|------|---------------|-----------------|
+| **查找逻辑** | 找第一个 `first_key > target`，取前一个 block | 找第一个 `last_key >= target` |
+| **边界处理** | 需要检查 `pos > 0`（避免越界） | 直接返回结果 |
+| **代码复杂度** | 需要"找第一个大于，然后取前一个"的间接逻辑 | 直接找到目标 block |
+| **直观性** | 相对间接（"第一个大于的前一个"） | 更直观（"第一个大于等于"） |
+| **实现简洁性** | 需要额外的边界检查 | 逻辑更直接，边界处理更简单 |
+
+**为什么 LevelDB 选择最后一个 key？**
+
+虽然两种方法都可以正确工作，但使用最后一个 key 有以下优势：
+
+1. **更直观的逻辑**: `last_key >= target_key` 直接表示"这个 block 可能包含 target_key"
+2. **更简单的实现**: 不需要"找第一个大于，然后取前一个"的间接逻辑
+3. **更少的边界检查**: 不需要特别处理 `pos == 0` 的情况
+4. **更符合直觉**: "最后一个 key >= target" 比 "第一个 key > target 的前一个" 更容易理解
+
+**对比示例**:
 
 ```
-使用第一个 key 的问题示例:
+使用第一个 key:
+  查找策略: 找到第一个 first_key > target_key 的位置，取前一个 block
+  实现: 需要额外的边界检查 (pos > 0)
+  代码: 相对复杂，需要间接逻辑
 
-Data Block 0: ["apple", "application", "apply", "banana"]
-Data Block 1: ["band", "bank", "base", "cherry"]
-
-Index Block (假设使用第一个 key):
-Entry 0: key="apple"   (Block 0 的第一个 key)
-Entry 1: key="band"    (Block 1 的第一个 key)
-
-查找 "banana":
-  二分查找:
-    Entry 0: "apple" < "banana" ✓
-    Entry 1: "band" > "banana" ✗
-    选择 Block 1？错误！"banana" 在 Block 0 中
-
-问题根源:
-  - 使用第一个 key 只能判断 target_key 是否 >= first_key
-  - 但无法判断 target_key 是否 <= last_key
-  - 因此无法确定 target_key 是否在这个 Block 中
-
-使用最后一个 key 的优势:
-  - 如果 last_key >= target_key，且前一个 Block 的 last_key < target_key
-  - 那么 target_key 一定在这个 Block 中（或不存在）
-  - 判断逻辑简单且正确
+使用最后一个 key:
+  查找策略: 找到第一个 last_key >= target_key 的位置
+  实现: 直接返回结果
+  代码: 更简洁，逻辑更直接
 ```
 
 **实际查找算法实现**:
@@ -917,11 +960,15 @@ IndexEntry* FindDataBlock(const std::string& target_key) {
 
 **总结**:
 
-使用最后一个 key 的原因：
-1. **正确的边界判断**: `last_key >= target_key` 可以准确判断 target_key 是否可能在这个 Block 中
-2. **简单的查找逻辑**: 二分查找只需要比较 last_key 和 target_key
-3. **避免误判**: 不会错误地跳过包含 target_key 的 Block
-4. **统一的判断标准**: 所有 Block 使用相同的判断逻辑（last_key >= target_key）
+虽然使用第一个 key 和最后一个 key 都可以实现正确的二分查找，但 LevelDB 选择使用最后一个 key 的原因：
+
+1. **更直观的逻辑**: `last_key >= target_key` 直接表示"这个 block 可能包含 target_key"
+2. **更简单的实现**: 不需要"找第一个大于，然后取前一个"的间接逻辑
+3. **更少的边界检查**: 不需要特别处理边界情况
+4. **更符合直觉**: "最后一个 key >= target" 比 "第一个 key > target 的前一个" 更容易理解和维护
+5. **统一的判断标准**: 所有 Block 使用相同的判断逻辑（last_key >= target_key）
+
+**结论**: 两种方法都可以正确工作，但使用最后一个 key 在实现上更简洁、更直观，因此 LevelDB 选择了这种设计。
 
 2. **Value (BlockHandle)**:
    - **Offset (8 bytes)**: Data Block 在 SSTable 文件中的字节偏移量
