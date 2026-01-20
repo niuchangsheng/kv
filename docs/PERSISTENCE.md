@@ -490,17 +490,98 @@ Index Block (与 Data Block 格式相同):
 
 **Index Entry 格式**:
 
-每个 Index Entry 对应一个 Data Block：
+每个 Index Entry 对应一个 Data Block，使用与 Data Block Entry 相同的格式（共享前缀压缩）：
 
 ```
-Index Entry:
-┌──────────────┬──────────────────────────────────────────┐
-│ Key          │ Value (BlockHandle)                      │
-│ (string)     │  ┌──────────────┬──────────────────────┐ │
-│              │  │ Offset       │ Size                 │ │
-│              │  │ (8 bytes)    │ (8 bytes)            │ │
-│              │  └──────────────┴──────────────────────┘ │
-└──────────────┴──────────────────────────────────────────┘
+Index Entry (使用共享前缀压缩格式):
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│ Shared Len    │ Non-Shared   │ Value Length │ Non-Shared   │
+│  (varint)    │  Key Length   │  (varint)    │     Key      │
+│              │  (varint)     │              │ (variable)   │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│     Value    │               │              │              │
+│  (BlockHandle)│               │              │              │
+│  (16 bytes)  │               │              │              │
+└──────────────┴──────────────┴──────────────┴──────────────┘
+```
+
+**Index Entry Value (BlockHandle) 详细格式**:
+
+```
+BlockHandle (16 bytes):
+┌─────────────────────────────────────────────────────────┐
+│ Offset (8 bytes, little-endian)                          │
+│  ┌──────────┬──────────┬──────────┬──────────┐          │
+│  │ Byte 0-1  │ Byte 2-3 │ Byte 4-5 │ Byte 6-7 │          │
+│  │ (low)     │          │          │ (high)   │          │
+│  └──────────┴──────────┴──────────┴──────────┘          │
+├─────────────────────────────────────────────────────────┤
+│ Size (8 bytes, little-endian)                            │
+│  ┌──────────┬──────────┬──────────┬──────────┐          │
+│  │ Byte 0-1  │ Byte 2-3 │ Byte 4-5 │ Byte 6-7 │          │
+│  │ (low)     │          │          │ (high)   │          │
+│  └──────────┴──────────┴──────────┴──────────┘          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Index Entry 编码示例**:
+
+```
+假设有 3 个 Data Block:
+
+Data Block 0: 最后一个 key = "banana", offset=0,   size=200
+Data Block 1: 最后一个 key = "cherry", offset=200, size=180
+Data Block 2: 最后一个 key = "cloud",   offset=380, size=190
+
+Index Block Entries:
+
+Entry 0:
+  Key: "banana" (shared_len=0, 完整存储)
+  Value: BlockHandle{offset=0, size=200}
+    编码: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // offset=0
+           0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]  // size=200
+
+Entry 1:
+  Key: "cherry" (shared_len=0, 因为与 "banana" 无共享前缀)
+  Value: BlockHandle{offset=200, size=180}
+    编码: [0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // offset=200
+           0xB4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]  // size=180
+
+Entry 2:
+  Key: "cloud" (shared_len=0)
+  Value: BlockHandle{offset=380, size=190}
+    编码: [0x7C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // offset=380
+           0xBE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]  // size=190
+```
+
+**Index Block 完整结构**:
+
+```
+Index Block 布局:
+┌─────────────────────────────────────────────────────────┐
+│ Entry 0 (key="banana", BlockHandle{0, 200})            │
+│ Entry 1 (key="cherry", BlockHandle{200, 180})          │
+│ Entry 2 (key="cloud", BlockHandle{380, 190})           │
+│ ...                                                     │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Restart Points Array                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │ Offset 0 │  │ Offset 1 │  │ Offset 2 │  ...         │
+│  │ (4 bytes)│  │ (4 bytes)│  │ (4 bytes)│              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Restart Point Count (4 bytes, little-endian)             │
+│  例如: 0x03 0x00 0x00 0x00 表示 3 个重启点              │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Block Trailer (5 bytes)                                   │
+│  ┌──────────────┬────────────────────────────────────┐  │
+│  │ Compression  │ Checksum (CRC32, 4 bytes)          │  │
+│  │ Type (1 byte)│                                    │  │
+│  └──────────────┴────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
 **字段说明**:
@@ -566,45 +647,178 @@ Entry 2: key="cloud",   BlockHandle{offset=380, size=190}
 
 1. **Bloom Filter Meta Block** (最常见):
    - **用途**: 快速判断 key 是否不存在，避免不必要的 Block 读取
-   - **格式**: 
+   - **完整格式**: 
      ```
+     Bloom Filter Meta Block:
      ┌─────────────────────────────────────────────────────────┐
      │ Filter Data (Bloom Filter 位数组)                        │
      │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
-     │  │ Bit 0-7  │  │ Bit 8-15 │  │ Bit 16-23│  │ ...    │  │
+     │  │ Byte 0   │  │ Byte 1   │  │ Byte 2   │  │ ...    │  │
+     │  │ (Bit 0-7)│  │ (Bit 8-15)│ │ (Bit 16-23)│ │        │  │
      │  └──────────┘  └──────────┘  └──────────┘  └────────┘  │
+     │  (按字节存储，每个字节包含 8 个位)                        │
      └─────────────────────────────────────────────────────────┘
      ┌─────────────────────────────────────────────────────────┐
-     │ Filter Size (4 bytes)                                    │
+     │ Filter Size (4 bytes, little-endian)                      │
+     │  表示 Filter Data 的字节数                                │
+     │  例如: 0x00 0x10 0x00 0x00 = 4096 字节                  │
      └─────────────────────────────────────────────────────────┘
      ```
+   
+   - **Bloom Filter 位数组编码**:
+     ```
+     位数组按字节存储，每个字节包含 8 个位:
+     
+     Byte 0: [Bit 0] [Bit 1] [Bit 2] [Bit 3] [Bit 4] [Bit 5] [Bit 6] [Bit 7]
+     Byte 1: [Bit 8] [Bit 9] [Bit 10] [Bit 11] [Bit 12] [Bit 13] [Bit 14] [Bit 15]
+     ...
+     
+     位操作:
+     - 设置位 i: byte[i/8] |= (1 << (i % 8))
+     - 检查位 i: (byte[i/8] & (1 << (i % 8))) != 0
+     ```
+   
+   - **Bloom Filter 构建算法**:
+     ```
+     对于每个 key:
+       1. 使用 k 个不同的 Hash 函数计算 k 个哈希值
+       2. 将每个哈希值对位数组大小取模，得到位位置
+       3. 将对应的位设置为 1
+     
+     示例:
+       key = "apple"
+       hash1("apple") % filter_size = 1234 → 设置位 1234
+       hash2("apple") % filter_size = 5678 → 设置位 5678
+       ...
+       hashk("apple") % filter_size = 9012 → 设置位 9012
+     ```
+   
+   - **Bloom Filter 查询算法**:
+     ```
+     对于查询 key:
+       1. 使用相同的 k 个 Hash 函数计算 k 个哈希值
+       2. 检查对应的 k 个位是否都为 1
+       3. 如果所有位都为 1，返回 "可能存在"
+       4. 如果有任何位为 0，返回 "肯定不存在"
+     
+     示例:
+       查询 "banana":
+         hash1("banana") % filter_size = 2345 → 检查位 2345
+         hash2("banana") % filter_size = 6789 → 检查位 6789
+         ...
+         如果所有位都是 1 → 可能存在（继续查找）
+         如果有任何位是 0 → 肯定不存在（快速返回）
+     ```
+   
    - **Bloom Filter 参数**:
-     - **Hash 函数数量**: 通常 10-15 个
-     - **位数组大小**: 根据数据量计算，通常每个 key 10 bits
+     - **Hash 函数数量 (k)**: 通常 10-15 个
+       - 计算公式: `k = (filter_size / num_keys) * ln(2)`
+       - 更多 hash 函数 → 更低的误判率，但计算开销更大
+     - **位数组大小 (m)**: 根据数据量计算
+       - 计算公式: `m = -n * ln(p) / (ln(2)^2)`
+       - 其中 n = key 数量, p = 目标误判率
+       - 通常每个 key 10 bits (误判率约 1%)
      - **误判率**: 通常 < 1%
+       - 误判率 = (1 - e^(-kn/m))^k
+       - 实际应用中，误判率通常控制在 0.1% - 1%
+   
+   - **Bloom Filter 编码示例**:
+     ```
+     假设有 1000 个 key，目标误判率 1%:
+     
+     计算参数:
+       m = -1000 * ln(0.01) / (ln(2)^2) ≈ 9585 bits ≈ 1198 bytes
+       k = (1198 * 8 / 1000) * ln(2) ≈ 6.6 → 取 7 个 hash 函数
+     
+     Filter 存储:
+       Filter Data: 1198 字节的位数组
+       Filter Size: 0xB6 0x04 0x00 0x00 (1198 的 little-endian)
+     
+     查询示例:
+       查询 "apple":
+         hash1("apple") % 9585 = 1234 → 检查 byte[154], bit 2
+         hash2("apple") % 9585 = 5678 → 检查 byte[709], bit 6
+         ...
+         hash7("apple") % 9585 = 9012 → 检查 byte[1126], bit 4
+     ```
 
 2. **Statistics Meta Block** (可选):
-   - **用途**: 存储 SSTable 的统计信息
-   - **格式**:
+   - **用途**: 存储 SSTable 的统计信息，用于查询优化和监控
+   - **格式** (使用类似 Data Block 的格式，但存储 key-value 对):
      ```
+     Statistics Meta Block:
      ┌─────────────────────────────────────────────────────────┐
-     │ Key-Value Pairs (文本格式或二进制格式)                   │
-     │  ┌──────────┬──────────────────────────────────────┐   │
-     │  │ "num_keys"│ "1000000"                           │   │
-     │  ├──────────┼──────────────────────────────────────┤   │
-     │  │ "data_size"│ "10485760"                         │   │
-     │  ├──────────┼──────────────────────────────────────┤   │
-     │  │ "index_size"│ "4096"                            │   │
-     │  └──────────┴──────────────────────────────────────┘   │
+     │ Entry 0: key="num_keys", value="1000000"                │
+     │ Entry 1: key="data_size", value="10485760"             │
+     │ Entry 2: key="index_size", value="4096"                │
+     │ ...                                                     │
+     └─────────────────────────────────────────────────────────┘
+     ┌─────────────────────────────────────────────────────────┐
+     │ Restart Points                                           │
+     └─────────────────────────────────────────────────────────┘
+     ┌─────────────────────────────────────────────────────────┐
+     │ Restart Point Count                                      │
+     └─────────────────────────────────────────────────────────┘
+     ┌─────────────────────────────────────────────────────────┐
+     │ Block Trailer                                            │
      └─────────────────────────────────────────────────────────┘
      ```
-   - **统计信息内容**:
-     - `num_keys`: 总 key 数量
-     - `data_size`: Data Block 总大小
-     - `index_size`: Index Block 大小
-     - `filter_size`: Bloom Filter 大小
-     - `min_key`: 最小 key
-     - `max_key`: 最大 key
+   
+   - **Statistics Entry 格式**:
+     ```
+     每个统计项使用与 Data Block Entry 相同的格式:
+     
+     ┌──────────────┬──────────────┬──────────────┬──────────────┐
+     │ Shared Len    │ Non-Shared   │ Value Length │ Non-Shared   │
+     │  (varint)    │  Key Length   │  (varint)    │     Key      │
+     │              │  (varint)     │              │ (variable)   │
+     ├──────────────┼──────────────┼──────────────┼──────────────┤
+     │     Value    │               │              │              │
+     │  (string)    │               │              │              │
+     │  (variable)  │               │              │              │
+     └──────────────┴──────────────┴──────────────┴──────────────┘
+     
+     示例:
+       Entry: key="num_keys", value="1000000"
+       - Shared Len: 0 (第一个 entry)
+       - Non-Shared Key: "num_keys" (8 bytes)
+       - Value: "1000000" (7 bytes)
+     ```
+   
+   - **统计信息内容** (标准字段):
+     - `num_keys` (string): 总 key 数量，例如 "1000000"
+     - `data_size` (string): Data Block 总大小（字节），例如 "10485760"
+     - `index_size` (string): Index Block 大小（字节），例如 "4096"
+     - `filter_size` (string): Bloom Filter 大小（字节），例如 "1198"
+     - `min_key` (string): 最小 key（第一个 key），例如 "apple"
+     - `max_key` (string): 最大 key（最后一个 key），例如 "zebra"
+     - `raw_key_size` (string, 可选): 所有 key 的总大小（字节）
+     - `raw_value_size` (string, 可选): 所有 value 的总大小（字节）
+   
+   - **Statistics Meta Block 编码示例**:
+     ```
+     统计信息:
+       num_keys = 1000000
+       data_size = 10485760
+       index_size = 4096
+       filter_size = 1198
+       min_key = "apple"
+       max_key = "zebra"
+     
+     编码 (简化示例):
+       Entry 0: "num_keys" → "1000000"
+       Entry 1: "data_size" → "10485760"  (shared_len=0, 因为与 "num_keys" 无共享)
+       Entry 2: "index_size" → "4096"     (shared_len=0)
+       Entry 3: "filter_size" → "1198"     (shared_len=5, 共享 "size")
+       Entry 4: "min_key" → "apple"        (shared_len=0)
+       Entry 5: "max_key" → "zebra"        (shared_len=3, 共享 "_key")
+     ```
+   
+   - **Statistics Meta Block 使用场景**:
+     - **查询优化**: 使用 min_key 和 max_key 快速判断 key 是否在 SSTable 范围内
+     - **Compaction 决策**: 使用 num_keys 和 data_size 决定是否需要 Compaction
+     - **监控和调试**: 提供 SSTable 的详细统计信息
+     - **成本估算**: 使用 raw_key_size 和 raw_value_size 估算存储成本
 
 **Meta Block 查找流程**:
 
@@ -637,13 +851,75 @@ Entry 2: key="cloud",   BlockHandle{offset=380, size=190}
 - **空间效率**: Bloom Filter 通常只占用每个 key 10 bits，空间开销小
 - **I/O 减少**: 对于不存在的 key，只需读取 Meta Block（通常 < 1KB），而不是整个 Data Block（通常 4-64KB）
 
+**Meta Block 存储结构**:
+
+SSTable 文件可以包含多个 Meta Block，通过 Meta Index Block 管理：
+
+```
+Meta Index Block (格式与 Index Block 相同):
+┌─────────────────────────────────────────────────────────┐
+│ Entry 0: key="filter.bloom", BlockHandle{offset, size} │
+│ Entry 1: key="stats", BlockHandle{offset, size}        │
+│ ...                                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Meta Block 查找流程**:
+
+```
+1. 从 Footer 读取 Meta Index Block Handle
+2. 读取 Meta Index Block
+3. 在 Meta Index Block 中查找目标 Meta Block 名称
+4. 读取对应的 Meta Block
+5. 根据 Meta Block 类型解析内容
+```
+
 **Meta Block 命名约定**:
 
 ```
 Meta Block 通过名称标识:
-- "filter.<policy>": Bloom Filter（如 "filter.bloom")
+- "filter.bloom": Bloom Filter（最常用）
+- "filter.ribbon": Ribbon Filter（可选，更高效的替代方案）
 - "stats": 统计信息
-- 未来可以扩展: "compression", "encryption" 等
+- "compression": 压缩信息（未来扩展）
+- "encryption": 加密信息（未来扩展）
+- "custom.*": 自定义 Meta Block（用户定义）
+```
+
+**Meta Block 完整查找示例**:
+
+```
+查找 key="target" 的完整流程:
+
+1. 读取 Footer
+   └─► 获取 Meta Index Block Handle
+
+2. 读取 Meta Index Block
+   └─► 查找 "filter.bloom" Entry
+   └─► 获取 Bloom Filter BlockHandle
+
+3. 读取 Bloom Filter Meta Block
+   └─► 检查 "target" 是否可能存在
+   └─► 如果不存在，直接返回 NotFound
+
+4. 如果可能存在，继续查找:
+   └─► 读取 Index Block
+   └─► 查找对应的 Data Block
+   └─► 在 Data Block 中查找 "target"
+```
+
+**Meta Block 性能影响**:
+
+```
+无 Bloom Filter:
+  查找不存在的 key: 需要读取 Index Block + Data Block = ~8KB I/O
+
+有 Bloom Filter:
+  查找不存在的 key: 只需读取 Meta Index Block + Bloom Filter = ~2KB I/O
+  性能提升: 约 4 倍（对于不存在的 key）
+  
+  查找存在的 key: 额外读取 Bloom Filter = ~1KB I/O
+  性能影响: 可忽略（Bloom Filter 很小，通常 < 1KB）
 ```
 
 #### Footer 格式
