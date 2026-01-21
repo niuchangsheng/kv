@@ -41,6 +41,9 @@ public:
     // Return true if the status indicates an IOError.
     bool IsIOError() const { return code_ == kIOError; }
 
+    // Return true if the status indicates an InvalidArgument error.
+    bool IsInvalidArgument() const { return code_ == kInvalidArgument; }
+
     // Return a string representation of this status.
     std::string ToString() const;
 

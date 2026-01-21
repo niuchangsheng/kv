@@ -392,6 +392,127 @@ TEST_F(DBTest, DestroyDB) {
     delete db;
 }
 
+// Test Open with error_if_exists
+TEST_F(DBTest, OpenErrorIfExists) {
+    // Create database first
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_error_if_exists", &db);
+    ASSERT_TRUE(status.ok());
+    delete db;
+    
+    // Try to open again with error_if_exists = true
+    options_.error_if_exists = true;
+    status = DB::Open(options_, "/tmp/testdb_error_if_exists", &db);
+    ASSERT_FALSE(status.ok());
+    ASSERT_TRUE(status.IsInvalidArgument());
+}
+
+// Test Open with create_if_missing = false
+TEST_F(DBTest, OpenCreateIfMissingFalse) {
+    options_.create_if_missing = false;
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_not_exist", &db);
+    ASSERT_FALSE(status.ok());
+    ASSERT_TRUE(status.IsNotFound());
+}
+
+// Test RecoverFromWAL with empty WAL
+TEST_F(DBTest, RecoverFromEmptyWAL) {
+    // Create database
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_empty_wal", &db);
+    ASSERT_TRUE(status.ok());
+    
+    // Close and reopen - should recover (even if WAL is empty)
+    delete db;
+    status = DB::Open(options_, "/tmp/testdb_empty_wal", &db);
+    ASSERT_TRUE(status.ok());
+    
+    delete db;
+}
+
+// Test RecoverFromWAL with actual data
+TEST_F(DBTest, RecoverFromWAL) {
+    // Create database and write data
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_recover", &db);
+    ASSERT_TRUE(status.ok());
+    
+    status = db->Put(write_options_, "key1", "value1");
+    ASSERT_TRUE(status.ok());
+    status = db->Put(write_options_, "key2", "value2");
+    ASSERT_TRUE(status.ok());
+    
+    delete db;
+    
+    // Reopen - should recover data from WAL
+    status = DB::Open(options_, "/tmp/testdb_recover", &db);
+    ASSERT_TRUE(status.ok());
+    
+    std::string value;
+    status = db->Get(read_options_, "key1", &value);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(value, "value1");
+    
+    status = db->Get(read_options_, "key2", &value);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(value, "value2");
+    
+    delete db;
+}
+
+// Test Put with sync option
+TEST_F(DBTest, PutWithSync) {
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_sync", &db);
+    ASSERT_TRUE(status.ok());
+    
+    WriteOptions sync_options;
+    sync_options.sync = true;
+    
+    status = db->Put(sync_options, "key1", "value1");
+    ASSERT_TRUE(status.ok());
+    
+    delete db;
+}
+
+// Test Delete with sync option
+TEST_F(DBTest, DeleteWithSync) {
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_delete_sync", &db);
+    ASSERT_TRUE(status.ok());
+    
+    status = db->Put(write_options_, "key1", "value1");
+    ASSERT_TRUE(status.ok());
+    
+    WriteOptions sync_options;
+    sync_options.sync = true;
+    
+    status = db->Delete(sync_options, "key1");
+    ASSERT_TRUE(status.ok());
+    
+    delete db;
+}
+
+// Test Write with sync option
+TEST_F(DBTest, WriteBatchWithSync) {
+    DB* db;
+    Status status = DB::Open(options_, "/tmp/testdb_batch_sync", &db);
+    ASSERT_TRUE(status.ok());
+    
+    WriteOptions sync_options;
+    sync_options.sync = true;
+    
+    WriteBatch batch;
+    batch.Put("key1", "value1");
+    batch.Put("key2", "value2");
+    
+    status = db->Write(sync_options, &batch);
+    ASSERT_TRUE(status.ok());
+    
+    delete db;
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
