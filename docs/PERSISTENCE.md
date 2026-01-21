@@ -1433,20 +1433,288 @@ private:
 
 ### 6.2 Manifest 文件格式
 
+**Manifest 文件概述**:
+
 ```
 Manifest File: <db_name>/MANIFEST-<version>
+例如: /data/mydb/MANIFEST-000001
 
-Format: 一系列 VersionEdit 记录
+作用: 记录数据库的元数据变更历史，包括 SSTable 文件的添加、删除、Compaction 等信息
+格式: 一系列 VersionEdit 记录（追加写入，类似日志）
+```
 
-VersionEdit:
-┌──────────────┬──────────────┬──────────────┐
-│  Comparator  │  Log Number  │  Next File   │
-│  (string)    │   (uint64)   │  Number      │
-├──────────────┼──────────────┼──────────────┤
-│  Last Seq    │  Level 0     │  Level 1     │
-│  (uint64)    │  Files       │  Files       │
-│              │  (repeated)  │  (repeated)  │
-└──────────────┴──────────────┴──────────────┘
+**Manifest 文件结构**:
+
+```
+Manifest File:
+┌─────────────────────────────────────────────────────────┐
+│ VersionEdit 0 (初始状态)                                │
+│ VersionEdit 1 (第一次变更)                              │
+│ VersionEdit 2 (第二次变更)                              │
+│ ...                                                     │
+│ VersionEdit N (最新状态)                                │
+└─────────────────────────────────────────────────────────┘
+```
+
+**VersionEdit 记录格式**:
+
+每个 VersionEdit 记录包含数据库状态的增量变更信息：
+
+```
+VersionEdit 记录格式:
+┌─────────────────────────────────────────────────────────┐
+│ 字段类型标识 (1 byte)                                   │
+│  0x01 = Comparator                                       │
+│  0x02 = Log Number                                       │
+│  0x03 = Next File Number                                 │
+│  0x04 = Last Sequence Number                            │
+│  0x05 = Add File (Level 0)                              │
+│  0x06 = Delete File (Level 0)                           │
+│  0x07 = Add File (Level 1)                              │
+│  0x08 = Delete File (Level 1)                           │
+│  ...                                                     │
+├─────────────────────────────────────────────────────────┤
+│ 字段数据 (变长，根据字段类型)                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+**VersionEdit 字段详解**:
+
+#### 1. **Comparator (比较器)**
+
+```
+字段类型: 0x01
+数据格式: varint(长度) + string(比较器名称)
+示例: "leveldb.BytewiseComparator"
+
+含义:
+- 指定 key 的排序比较器
+- 用于确保所有 SSTable 中的 key 都按照相同的规则排序
+- 如果比较器改变，数据库需要重建（通常不会改变）
+```
+
+#### 2. **Log Number (日志文件编号)**
+
+```
+字段类型: 0x02
+数据格式: varint(日志文件编号)
+示例: 5 (表示当前使用的 WAL 文件是 LOG.5)
+
+含义:
+- 当前正在使用的 WAL (Write-Ahead Log) 文件编号
+- 用于崩溃恢复时确定需要重放的日志文件
+- 当 MemTable 刷新到 SSTable 后，旧的 WAL 文件可以删除
+- 新的写入会使用新的 WAL 文件编号
+```
+
+#### 3. **Next File Number (下一个文件编号)**
+
+```
+字段类型: 0x03
+数据格式: varint(文件编号)
+示例: 100 (下一个新文件将使用编号 100)
+
+含义:
+- 全局文件编号分配器
+- 每个新文件（SSTable、WAL、Manifest）都会分配一个唯一的递增编号
+- 用于文件命名：000100.sst, LOG.100, MANIFEST-000100
+- 确保文件编号的唯一性和单调递增
+```
+
+#### 4. **Last Sequence Number (最后序列号)**
+
+```
+字段类型: 0x04
+数据格式: varint(序列号)
+示例: 1000000 (最后一个写入操作的序列号)
+
+含义:
+- 全局写入序列号，单调递增
+- 每个写入操作（Put/Delete）都会分配一个序列号
+- 用于 MVCC (多版本并发控制) 和快照隔离
+- 序列号用于判断数据的可见性（哪些数据对哪些快照可见）
+```
+
+#### 5. **Add File (添加文件)**
+
+```
+字段类型: 0x05 (Level 0), 0x07 (Level 1), 0x09 (Level 2), ...
+数据格式:
+  varint(level) +
+  varint(file_number) +
+  varint(file_size) +
+  varint(smallest_key_length) + string(smallest_key) +
+  varint(largest_key_length) + string(largest_key)
+
+示例:
+  Level: 0
+  File Number: 42
+  File Size: 1048576 (1MB)
+  Smallest Key: "apple"
+  Largest Key: "banana"
+
+含义:
+- 记录新添加的 SSTable 文件信息
+- 包含文件所在的 Level、文件编号、大小、key 范围
+- 用于快速判断 key 是否可能在某个文件中（通过 key 范围）
+```
+
+#### 6. **Delete File (删除文件)**
+
+```
+字段类型: 0x06 (Level 0), 0x08 (Level 1), 0x0A (Level 2), ...
+数据格式:
+  varint(level) +
+  varint(file_number)
+
+示例:
+  Level: 1
+  File Number: 35
+
+含义:
+- 记录被删除的 SSTable 文件
+- 通常在 Compaction 后，旧文件被新文件替换时记录
+- 实际文件删除可能延迟（等待没有读取引用该文件）
+```
+
+**Manifest 文件示例**:
+
+```
+假设数据库的变更历史:
+
+初始状态 (VersionEdit 0):
+  Comparator: "leveldb.BytewiseComparator"
+  Log Number: 1
+  Next File Number: 2
+  Last Sequence: 0
+  Level 0 Files: []
+  Level 1 Files: []
+
+第一次写入，MemTable 刷新 (VersionEdit 1):
+  Add File: Level 0, File 2, Size 1MB, Keys ["apple", "zebra"]
+  Log Number: 3 (新的 WAL 文件)
+  Next File Number: 4
+  Last Sequence: 1000
+
+Compaction: Level 0 → Level 1 (VersionEdit 2):
+  Delete File: Level 0, File 2
+  Add File: Level 1, File 4, Size 1MB, Keys ["apple", "zebra"]
+  Next File Number: 5
+
+继续写入 (VersionEdit 3):
+  Add File: Level 0, File 5, Size 500KB, Keys ["alpha", "beta"]
+  Log Number: 6
+  Next File Number: 7
+  Last Sequence: 2000
+```
+
+**Manifest 文件编码格式**:
+
+Manifest 文件使用类似 SSTable 的编码格式，但更简单：
+
+```
+VersionEdit 编码:
+┌─────────────────────────────────────────────────────────┐
+│ 字段 1: 类型标识 (1 byte) + 数据 (变长)                  │
+│ 字段 2: 类型标识 (1 byte) + 数据 (变长)                  │
+│ ...                                                     │
+│ 字段 N: 类型标识 (1 byte) + 数据 (变长)                  │
+└─────────────────────────────────────────────────────────┘
+
+每个字段:
+  [类型标识] [数据长度] [数据内容]
+  
+例如 Add File 字段:
+  0x05 (Add File Level 0)
+  varint(level=0)
+  varint(file_number=42)
+  varint(file_size=1048576)
+  varint(smallest_key_len=5) + "apple"
+  varint(largest_key_len=6) + "banana"
+```
+
+**Manifest 文件的作用**:
+
+1. **崩溃恢复**: 数据库重启时，通过重放所有 VersionEdit 记录，重建完整的文件列表和元数据
+2. **版本管理**: 支持多版本快照，每个版本对应一个 Version 对象
+3. **Compaction 记录**: 记录所有 Compaction 操作，包括文件的添加和删除
+4. **元数据持久化**: 将内存中的元数据（文件列表、序列号等）持久化到磁盘
+
+**Manifest 文件读取流程**:
+
+```
+1. 读取 CURRENT 文件
+   └─► 获取当前 Manifest 文件名（如 "MANIFEST-000001"）
+
+2. 顺序读取 Manifest 文件中的所有 VersionEdit 记录
+   └─► 解析每个 VersionEdit 的字段
+   └─► 应用每个 VersionEdit 到 VersionSet
+
+3. 重建完整的数据库状态
+   └─► 所有 Level 的文件列表
+   └─► 当前序列号
+   └─► 下一个文件编号
+   └─► 当前 WAL 文件编号
+```
+
+**Manifest 文件写入流程**:
+
+```
+当发生元数据变更时（如 Compaction、MemTable 刷新）:
+
+1. 创建 VersionEdit 对象
+   └─► 设置变更的字段（Add File、Delete File 等）
+
+2. 将 VersionEdit 追加写入 Manifest 文件
+   └─► 使用追加写入模式（类似日志）
+   └─► 确保原子性（先写临时文件，再原子重命名）
+
+3. 更新内存中的 VersionSet
+   └─► 应用 VersionEdit，创建新的 Version
+   └─► 更新当前版本指针
+```
+
+**Manifest 文件大小管理**:
+
+```
+Manifest 文件会不断增长（追加写入）:
+
+问题:
+- 文件过大时，恢复时间变长
+- 需要重放所有历史记录
+
+解决方案:
+- 定期压缩 Manifest 文件
+- 将多个 VersionEdit 合并为一个完整的快照
+- 只保留最新的完整状态，而不是所有历史变更
+
+压缩流程:
+1. 读取当前 Manifest 文件
+2. 重建完整的数据库状态
+3. 写入新的 Manifest 文件（只包含一个完整的 VersionEdit）
+4. 更新 CURRENT 文件指向新的 Manifest
+5. 删除旧的 Manifest 文件
+```
+
+**Manifest 文件与 CURRENT 文件的关系**:
+
+```
+CURRENT 文件:
+  <db_name>/CURRENT
+  内容: MANIFEST-000001\n
+  
+作用: 指向当前使用的 Manifest 文件
+
+为什么需要 CURRENT 文件:
+- Manifest 文件会定期压缩和重命名
+- 需要有一个固定的入口点来找到当前的 Manifest
+- CURRENT 文件很小，更新是原子的（先写临时文件，再原子重命名）
+
+更新流程:
+1. 写入新的 Manifest 文件（如 MANIFEST-000002）
+2. 写入临时文件 CURRENT.tmp，内容为 "MANIFEST-000002\n"
+3. 原子重命名 CURRENT.tmp → CURRENT
+4. 删除旧的 Manifest 文件（可选，延迟删除）
 ```
 
 ### 6.3 Version 和 VersionSet
