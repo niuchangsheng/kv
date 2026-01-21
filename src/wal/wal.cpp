@@ -63,11 +63,29 @@ static uint32_t CalculateCRC32(const uint8_t* data, size_t length, uint32_t crc 
 // ============================================================================
 
 WALWriter::WALWriter(const std::string& log_file)
-    : log_file_(log_file) {
+    : log_file_(log_file), fd_(-1) {
     file_.open(log_file, std::ios::binary | std::ios::app);
     if (!file_.is_open()) {
         // Try to create the file if it doesn't exist
         file_.open(log_file, std::ios::binary | std::ios::out | std::ios::trunc);
+    }
+    
+    // Get file descriptor for fsync (platform-specific)
+    if (file_.is_open()) {
+        #ifdef _WIN32
+            // On Windows, we'll use the file handle later if needed
+            fd_ = -1;  // Not used on Windows
+        #else
+            // On Unix-like systems, try to get file descriptor
+            // We need to access the underlying FILE* from std::ofstream
+            // This is a workaround: use FILE* opened separately for sync
+            // For now, we'll open the file with POSIX API for sync
+            FILE* fp = fopen(log_file.c_str(), "ab");
+            if (fp != nullptr) {
+                fd_ = fileno(fp);
+                fclose(fp);  // We'll reopen when needed for sync
+            }
+        #endif
     }
 }
 
@@ -114,6 +132,20 @@ Status WALWriter::AddRecord(RecordType type,
                             const std::string& value) {
     if (!file_.is_open()) {
         return Status::IOError("WAL file is not open");
+    }
+    
+    // Validate record type
+    if (type != kPut && type != kDelete && type != kSync && type != kEof) {
+        return Status::InvalidArgument("Invalid record type");
+    }
+    
+    // Validate key and value lengths (must fit in uint32_t)
+    const size_t max_length = static_cast<size_t>(UINT32_MAX);
+    if (key.size() > max_length) {
+        return Status::InvalidArgument("Key length exceeds maximum (4GB)");
+    }
+    if (value.size() > max_length) {
+        return Status::InvalidArgument("Value length exceeds maximum (4GB)");
     }
     
     // Record format:
@@ -163,13 +195,61 @@ Status WALWriter::Sync() {
         return Status::IOError("WAL file is not open");
     }
     
+    // Flush C++ stream buffer first
     file_.flush();
     if (file_.fail()) {
         return Status::IOError("Failed to flush WAL file");
     }
     
-    // On systems that support it, we could use fsync() here
-    // For now, we'll just flush the buffer
+    // Force data to disk using platform-specific sync
+    #ifdef _WIN32
+        // On Windows, use FlushFileBuffers
+        // We need to get the file handle from the file descriptor
+        // Since std::ofstream doesn't expose fd directly, we use a workaround:
+        // Open the file separately for syncing
+        HANDLE hFile = CreateFileA(log_file_.c_str(),
+                                   GENERIC_WRITE,
+                                   0,  // No sharing
+                                   NULL,
+                                   OPEN_EXISTING,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            if (!FlushFileBuffers(hFile)) {
+                CloseHandle(hFile);
+                return Status::IOError("Failed to sync WAL file to disk");
+            }
+            CloseHandle(hFile);
+        }
+        // If CreateFile fails, we still return OK (flush() was successful)
+    #else
+        // On Unix-like systems, use fsync
+        if (fd_ >= 0) {
+            // Try to sync using the file descriptor
+            // Note: fd_ might be stale if file was reopened, so we reopen
+            FILE* fp = fopen(log_file_.c_str(), "ab");
+            if (fp != nullptr) {
+                int fd = fileno(fp);
+                if (fd >= 0) {
+                    if (fsync(fd) != 0) {
+                        fclose(fp);
+                        return Status::IOError("Failed to sync WAL file to disk");
+                    }
+                }
+                fclose(fp);
+            }
+        } else {
+            // Fallback: try to open and sync
+            FILE* fp = fopen(log_file_.c_str(), "ab");
+            if (fp != nullptr) {
+                int fd = fileno(fp);
+                if (fd >= 0) {
+                    fsync(fd);  // Ignore errors in fallback
+                }
+                fclose(fp);
+            }
+        }
+    #endif
     
     return Status::OK();
 }
@@ -286,10 +366,43 @@ bool WALReader::ReadRecord(RecordType* type,
         return false;
     }
     
+    // Validate key length (reasonable limit: 64MB)
+    // This prevents DoS attacks with extremely large keys
+    const uint32_t kMaxKeyLength = 64 * 1024 * 1024;  // 64MB
+    if (key_length > kMaxKeyLength) {
+        *status = Status::Corruption("Key length too large: " + std::to_string(key_length));
+        return false;
+    }
+    
     // Read value length
     uint32_t value_length;
     if (!ReadFixed32(&value_length)) {
         *status = Status::IOError("Failed to read value length");
+        return false;
+    }
+    
+    // Validate value length (reasonable limit: 64MB)
+    // This prevents DoS attacks with extremely large values
+    const uint32_t kMaxValueLength = 64 * 1024 * 1024;  // 64MB
+    if (value_length > kMaxValueLength) {
+        *status = Status::Corruption("Value length too large: " + std::to_string(value_length));
+        return false;
+    }
+    
+    // Check if we have enough data remaining in the file
+    // Get current position
+    std::streampos current_pos = file_.tellg();
+    file_.seekg(0, std::ios::end);
+    std::streampos file_size = file_.tellg();
+    file_.seekg(current_pos);
+    
+    // Calculate required bytes: key_length + value_length + 4 (checksum)
+    size_t required_bytes = static_cast<size_t>(key_length) + 
+                           static_cast<size_t>(value_length) + 4;
+    size_t remaining_bytes = static_cast<size_t>(file_size - current_pos);
+    
+    if (required_bytes > remaining_bytes) {
+        *status = Status::Corruption("Record extends beyond end of file");
         return false;
     }
     
@@ -355,10 +468,6 @@ Status WALReader::Replay(Handler* handler) {
             case kSync:
                 // Sync point - no action needed during replay
                 break;
-                
-            case kEof:
-                // End of file - should not reach here in normal flow
-                return Status::OK();
                 
             default:
                 return Status::Corruption("Unknown record type in WAL");

@@ -5,6 +5,14 @@
 #include <string>
 #include <fstream>
 #include <cstdint>
+#include <climits>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <cstdio>
+#endif
 
 // Record types in WAL
 enum RecordType {
@@ -52,6 +60,7 @@ private:
     
     std::ofstream file_;
     std::string log_file_;
+    int fd_;  // File descriptor for fsync (platform-specific)
     static const size_t kBlockSize = 32768;  // 32KB block size
 };
 

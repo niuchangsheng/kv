@@ -127,19 +127,35 @@ Status DB::Write(const WriteOptions& options, WriteBatch* updates) {
     // Write all batch operations to WAL
     class BatchWALHandler : public WriteBatch::Handler {
     public:
-        BatchWALHandler(WALWriter* writer) : writer_(writer) {}
+        BatchWALHandler(WALWriter* writer) : writer_(writer), status_(Status::OK()) {}
+        
         virtual void Put(const std::string& key, const std::string& value) override {
-            writer_->AddRecord(kPut, key, value);
+            if (status_.ok()) {
+                status_ = writer_->AddRecord(kPut, key, value);
+            }
         }
+        
         virtual void Delete(const std::string& key) override {
-            writer_->AddRecord(kDelete, key, "");
+            if (status_.ok()) {
+                status_ = writer_->AddRecord(kDelete, key, "");
+            }
         }
+        
+        Status GetStatus() const { return status_; }
+        
     private:
         WALWriter* writer_;
+        Status status_;
     };
     
     BatchWALHandler wal_handler(wal_writer_.get());
     status = updates->Iterate(&wal_handler);
+    if (!status.ok()) {
+        return status;
+    }
+    
+    // Check if any WAL write failed
+    status = wal_handler.GetStatus();
     if (!status.ok()) {
         return status;
     }
