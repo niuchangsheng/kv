@@ -20,6 +20,7 @@ target_include_directories(core_lib
 target_link_libraries(core_lib
     PUBLIC
         common_lib
+        wal_lib
         iterator_lib
         batch_lib
 )

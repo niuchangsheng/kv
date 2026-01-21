@@ -5,8 +5,10 @@
 #include "common/options.h"
 #include "iterator/iterator.h"
 #include "batch/write_batch.h"
+#include "wal/wal.h"
 #include <string>
 #include <unordered_map>
+#include <memory>
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -58,7 +60,14 @@ public:
 
 private:
     std::unordered_map<std::string, std::string> data_store_;
-
+    std::string dbname_;
+    std::unique_ptr<WALWriter> wal_writer_;
+    std::string wal_file_;
+    
+    // Helper methods
+    Status EnsureWALOpen();
+    Status RecoverFromWAL();
+    
     // No copying allowed
     DB(const DB&);
     void operator=(const DB&);

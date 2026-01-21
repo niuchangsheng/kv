@@ -8,6 +8,7 @@ find_package(GTest REQUIRED)
 add_subdirectory(common)
 add_subdirectory(iterator)
 add_subdirectory(batch)
+add_subdirectory(wal)
 add_subdirectory(core)
 
 # Benchmark executable (not a unit test)
@@ -57,6 +58,11 @@ add_test(
 add_test(
     NAME test_options
     COMMAND test_options
+)
+
+add_test(
+    NAME test_wal
+    COMMAND test_wal
 )
 
 # Register the data correctness test (optional, as it's long-running)

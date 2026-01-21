@@ -3,6 +3,7 @@
 
 # Add subdirectories in dependency order
 add_subdirectory(common)
+add_subdirectory(wal)
 add_subdirectory(iterator)
 add_subdirectory(batch)
 add_subdirectory(core)
@@ -14,6 +15,10 @@ add_library(kv_lib INTERFACE)
 # Link all submodules to the main library
 target_link_libraries(kv_lib
     INTERFACE
+        common_lib
+        wal_lib
+        iterator_lib
+        batch_lib
         core_lib
 )
 
