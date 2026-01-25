@@ -292,10 +292,10 @@ Status DB::RecoverFromWAL() {
 
 Status DB::MaybeScheduleFlush() {
     // Check if MemTable size exceeds threshold
-    // Use write_buffer_size if set, otherwise fall back to MemTable::kMaxSize
+    // Use write_buffer_size if set, otherwise use default 4MB (same as MemTable::kMaxSize)
     size_t threshold = options_.write_buffer_size > 0 
         ? options_.write_buffer_size 
-        : MemTable::kMaxSize;
+        : 4 * 1024 * 1024;  // Default 4MB
     
     if (memtable_->ApproximateSize() > threshold) {
         // Make current MemTable immutable
