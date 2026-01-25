@@ -6,9 +6,10 @@
 #include "iterator/iterator.h"
 #include "batch/write_batch.h"
 #include "wal/wal.h"
+#include "memtable/memtable.h"
 #include <string>
-#include <unordered_map>
 #include <memory>
+#include <mutex>
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -59,14 +60,26 @@ public:
     Iterator* NewIterator(const ReadOptions& options);
 
 private:
-    std::unordered_map<std::string, std::string> data_store_;
+    // MemTable for current writes
+    std::unique_ptr<MemTable> memtable_;
+    
+    // Immutable MemTable (being flushed to SSTable)
+    std::unique_ptr<MemTable> imm_memtable_;
+    
+    // Mutex for MemTable operations (for future thread-safety)
+    std::mutex mutex_;
+    
     std::string dbname_;
     std::unique_ptr<WALWriter> wal_writer_;
     std::string wal_file_;
     
+    // Options
+    Options options_;
+    
     // Helper methods
     Status EnsureWALOpen();
     Status RecoverFromWAL();
+    Status MaybeScheduleFlush();  // Check if MemTable needs flushing
     
     // No copying allowed
     DB(const DB&);

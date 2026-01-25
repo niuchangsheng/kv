@@ -26,6 +26,15 @@ public:
     // in the same directory as the DB contents if info_log is null.
     // Default: nullptr
     std::string* info_log;
+
+    // Amount of data to build up in memory before converting to a sorted
+    // on-disk file.  Larger values increase performance, especially during
+    // bulk loads.  Up to two write buffers may be held in memory at the
+    // same time, so you may wish to adjust this parameter to control
+    // memory usage.  Also, a larger write buffer will result in a longer
+    // recovery time the next time the database is opened.
+    // Default: 4MB
+    size_t write_buffer_size;
 };
 
 // Options that control read operations

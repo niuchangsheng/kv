@@ -2025,10 +2025,10 @@ private:
 
 ### 13.2 第二阶段：MemTable
 
-- [ ] 实现 MemTable（使用 std::map 或跳表）
-- [ ] 实现 MemTable 到 SSTable 的刷新
-- [ ] 实现双缓冲（MemTable + Immutable MemTable）
-- [ ] 测试 MemTable 功能
+- [x] 实现 MemTable（使用 std::map 或跳表）
+- [x] 实现 MemTable 到 SSTable 的刷新（占位符，SSTable 在第三阶段实现）
+- [x] 实现双缓冲（MemTable + Immutable MemTable）
+- [x] 测试 MemTable 功能
 
 ### 13.3 第三阶段：SSTable
 

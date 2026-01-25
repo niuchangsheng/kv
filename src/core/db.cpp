@@ -1,12 +1,15 @@
 #include "core/db.h"
 #include "iterator/db_iterator.h"
+#include "memtable/memtable.h"
 #include <iostream>
 #include <filesystem>
 #include <fstream>
 
 namespace fs = std::filesystem;
 
-DB::DB() : wal_writer_(nullptr) {}
+DB::DB() : wal_writer_(nullptr) {
+    memtable_ = std::make_unique<MemTable>();
+}
 
 DB::~DB() {
     if (wal_writer_) {
@@ -19,6 +22,7 @@ Status DB::Open(const Options& options, const std::string& name, DB** dbptr) {
 
     DB* db = new DB();
     db->dbname_ = name;
+    db->options_ = options;
     
     // Create database directory if it doesn't exist
     if (options.create_if_missing) {
@@ -55,6 +59,12 @@ Status DB::Open(const Options& options, const std::string& name, DB** dbptr) {
         return recover_status;
     }
     
+    // Check if recovered MemTable needs flushing
+    if (db->memtable_->ApproximateSize() > db->options_.write_buffer_size) {
+        // TODO: Schedule flush to SSTable (Phase 3)
+        // For now, we just log that it needs flushing
+    }
+    
     *dbptr = db;
     return Status::OK();
 }
@@ -79,17 +89,31 @@ Status DB::Put(const WriteOptions& options, const std::string& key, const std::s
         }
     }
     
-    // Write to in-memory store
-    data_store_[key] = value;
+    // Write to MemTable
+    memtable_->Put(key, value);
+    
+    // Check if MemTable needs flushing
+    Status flush_status = MaybeScheduleFlush();
+    if (!flush_status.ok()) {
+        return flush_status;
+    }
+    
     return Status::OK();
 }
 
 Status DB::Get(const ReadOptions& options, const std::string& key, std::string* value) {
-    auto it = data_store_.find(key);
-    if (it != data_store_.end()) {
-        *value = it->second;
+    // First check current MemTable
+    if (memtable_->Get(key, value)) {
         return Status::OK();
     }
+    
+    // Then check Immutable MemTable (if exists)
+    if (imm_memtable_ && imm_memtable_->Get(key, value)) {
+        return Status::OK();
+    }
+    
+    // TODO: Check SSTables (Phase 3)
+    
     return Status::NotFound();
 }
 
@@ -113,8 +137,15 @@ Status DB::Delete(const WriteOptions& options, const std::string& key) {
         }
     }
     
-    // Delete from in-memory store
-    data_store_.erase(key);
+    // Delete from MemTable
+    memtable_->Delete(key);
+    
+    // Check if MemTable needs flushing
+    Status flush_status = MaybeScheduleFlush();
+    if (!flush_status.ok()) {
+        return flush_status;
+    }
+    
     return Status::OK();
 }
 
@@ -168,26 +199,39 @@ Status DB::Write(const WriteOptions& options, WriteBatch* updates) {
         }
     }
     
-    // Apply to in-memory store
+    // Apply to MemTable
     class BatchHandler : public WriteBatch::Handler {
     public:
-        BatchHandler(DB* db) : db_(db) {}
+        BatchHandler(MemTable* memtable) : memtable_(memtable) {}
         virtual void Put(const std::string& key, const std::string& value) override {
-            db_->data_store_[key] = value;
+            memtable_->Put(key, value);
         }
         virtual void Delete(const std::string& key) override {
-            db_->data_store_.erase(key);
+            memtable_->Delete(key);
         }
     private:
-        DB* db_;
+        MemTable* memtable_;
     };
 
-    BatchHandler handler(this);
-    return updates->Iterate(&handler);
+    BatchHandler handler(memtable_.get());
+    Status batch_status = updates->Iterate(&handler);
+    if (!batch_status.ok()) {
+        return batch_status;
+    }
+    
+    // Check if MemTable needs flushing
+    Status flush_status = MaybeScheduleFlush();
+    if (!flush_status.ok()) {
+        return flush_status;
+    }
+    
+    return Status::OK();
 }
 
 Iterator* DB::NewIterator(const ReadOptions& options) {
-    return new DBIterator(data_store_);
+    // TODO: Merge iterator from MemTable, Immutable MemTable, and SSTables (Phase 3)
+    // For now, return MemTable iterator
+    return memtable_->NewIterator();
 }
 
 Status DB::EnsureWALOpen() {
@@ -222,28 +266,45 @@ Status DB::RecoverFromWAL() {
         return Status::IOError("Failed to open WAL file for recovery");
     }
     
-    // Replay handler that applies operations to in-memory store
+    // Replay handler that applies operations to MemTable
     class ReplayHandler : public WALReader::Handler {
     public:
-        ReplayHandler(std::unordered_map<std::string, std::string>* store)
-            : store_(store) {}
+        ReplayHandler(MemTable* memtable)
+            : memtable_(memtable) {}
         
         virtual Status Put(const std::string& key, const std::string& value) override {
-            (*store_)[key] = value;
+            memtable_->Put(key, value);
             return Status::OK();
         }
         
         virtual Status Delete(const std::string& key) override {
-            store_->erase(key);
+            memtable_->Delete(key);
             return Status::OK();
         }
         
     private:
-        std::unordered_map<std::string, std::string>* store_;
+        MemTable* memtable_;
     };
     
-    ReplayHandler handler(&data_store_);
+    ReplayHandler handler(memtable_.get());
     return reader.Replay(&handler);
+}
+
+Status DB::MaybeScheduleFlush() {
+    // Check if MemTable size exceeds threshold
+    if (memtable_->ApproximateSize() > options_.write_buffer_size) {
+        // Make current MemTable immutable
+        if (!imm_memtable_) {
+            imm_memtable_ = std::move(memtable_);
+            memtable_ = std::make_unique<MemTable>();
+            
+            // TODO: Schedule background flush to SSTable (Phase 3)
+            // For now, we just mark it as ready for flushing
+        }
+        // If imm_memtable_ already exists, we need to wait for flush to complete
+        // This is a simplified implementation - in production, we'd block or return error
+    }
+    return Status::OK();
 }
 
 Status DestroyDB(const std::string& name, const Options& options) {

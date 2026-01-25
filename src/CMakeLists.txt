@@ -6,6 +6,7 @@ add_subdirectory(common)
 add_subdirectory(wal)
 add_subdirectory(iterator)
 add_subdirectory(batch)
+add_subdirectory(memtable)
 add_subdirectory(core)
 
 # Create the main library that aggregates all modules
