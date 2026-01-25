@@ -188,9 +188,10 @@ TEST_F(MemTableTest, IteratorSeekToLast) {
     ASSERT_TRUE(it->Valid());
     ASSERT_EQ(it->key(), "a");
     
-    // Prev again (should be invalid - already at first)
+    // Prev again (stays at first, still valid - consistent with DBIterator behavior)
     it->Prev();
-    ASSERT_FALSE(it->Valid());
+    ASSERT_TRUE(it->Valid());
+    ASSERT_EQ(it->key(), "a");
     
     delete it;
 }
