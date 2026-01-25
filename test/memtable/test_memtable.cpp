@@ -186,19 +186,14 @@ TEST_F(MemTableTest, IteratorSeekToLast) {
     // Prev
     it->Prev();
     ASSERT_TRUE(it->Valid());
-    ASSERT_EQ(it->key(), "a");
-    
-    // Prev (should be at "b")
-    it->Prev();
-    ASSERT_TRUE(it->Valid());
     ASSERT_EQ(it->key(), "b");
     
-    // Prev again (should be at "a")
+    // Prev
     it->Prev();
     ASSERT_TRUE(it->Valid());
     ASSERT_EQ(it->key(), "a");
     
-    // Prev again (should be invalid)
+    // Prev again (should be invalid - already at first)
     it->Prev();
     ASSERT_FALSE(it->Valid());
     
