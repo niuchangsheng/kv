@@ -292,7 +292,12 @@ Status DB::RecoverFromWAL() {
 
 Status DB::MaybeScheduleFlush() {
     // Check if MemTable size exceeds threshold
-    if (memtable_->ApproximateSize() > options_.write_buffer_size) {
+    // Use write_buffer_size if set, otherwise fall back to MemTable::kMaxSize
+    size_t threshold = options_.write_buffer_size > 0 
+        ? options_.write_buffer_size 
+        : MemTable::kMaxSize;
+    
+    if (memtable_->ApproximateSize() > threshold) {
         // Make current MemTable immutable
         if (!imm_memtable_) {
             imm_memtable_ = std::move(memtable_);
