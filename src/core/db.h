@@ -7,9 +7,11 @@
 #include "batch/write_batch.h"
 #include "wal/wal.h"
 #include "memtable/memtable.h"
+#include "sstable/sstable_reader.h"
 #include <string>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -76,10 +78,16 @@ private:
     // Options
     Options options_;
     
+    // SSTable files (Level 0 for now)
+    std::vector<std::string> sstable_files_;
+    uint64_t next_file_number_;  // For generating unique file names
+    
     // Helper methods
     Status EnsureWALOpen();
     Status RecoverFromWAL();
     Status MaybeScheduleFlush();  // Check if MemTable needs flushing
+    Status FlushMemTable();       // Flush Immutable MemTable to SSTable
+    Status GetFromSSTable(const std::string& key, std::string* value);  // Get from SSTables
     
     // No copying allowed
     DB(const DB&);

@@ -1,13 +1,15 @@
 #include "core/db.h"
 #include "iterator/db_iterator.h"
 #include "memtable/memtable.h"
+#include "sstable/sstable_builder.h"
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
-DB::DB() : wal_writer_(nullptr) {
+DB::DB() : wal_writer_(nullptr), next_file_number_(1) {
     memtable_ = std::make_unique<MemTable>();
 }
 
@@ -112,9 +114,8 @@ Status DB::Get(const ReadOptions& options, const std::string& key, std::string* 
         return Status::OK();
     }
     
-    // TODO: Check SSTables (Phase 3)
-    
-    return Status::NotFound();
+    // Check SSTables (search in reverse order - newer files first)
+    return GetFromSSTable(key, value);
 }
 
 Status DB::Delete(const WriteOptions& options, const std::string& key) {
@@ -303,13 +304,92 @@ Status DB::MaybeScheduleFlush() {
             imm_memtable_ = std::move(memtable_);
             memtable_ = std::make_unique<MemTable>();
             
-            // TODO: Schedule background flush to SSTable (Phase 3)
-            // For now, we just mark it as ready for flushing
+            // Flush Immutable MemTable to SSTable
+            Status flush_status = FlushMemTable();
+            if (!flush_status.ok()) {
+                return flush_status;
+            }
         }
         // If imm_memtable_ already exists, we need to wait for flush to complete
         // This is a simplified implementation - in production, we'd block or return error
     }
     return Status::OK();
+}
+
+Status DB::FlushMemTable() {
+    if (!imm_memtable_ || imm_memtable_->Empty()) {
+        return Status::OK();
+    }
+
+    // Generate SSTable filename
+    std::string sstable_file = dbname_ + "/0/" + std::to_string(next_file_number_++) + ".sst";
+    
+    // Create Level 0 directory if needed
+    fs::path level0_dir = fs::path(sstable_file).parent_path();
+    if (!fs::exists(level0_dir)) {
+        fs::create_directories(level0_dir);
+    }
+
+    // Build SSTable from Immutable MemTable
+    sstable::SSTableBuilder builder(sstable_file);
+    
+    // Iterate through MemTable and add entries
+    Iterator* it = imm_memtable_->NewIterator();
+    it->SeekToFirst();
+    
+    while (it->Valid()) {
+        std::string key = it->key();
+        std::string value = it->value();
+        
+        // Skip deletion markers (empty value with single null byte)
+        // But still write them to SSTable for proper deletion propagation
+        Status s = builder.Add(key, value);
+        if (!s.ok()) {
+            delete it;
+            return s;
+        }
+        
+        it->Next();
+    }
+    delete it;
+
+    // Finish building the SSTable
+    Status s = builder.Finish();
+    if (!s.ok()) {
+        return s;
+    }
+
+    // Add to SSTable file list
+    sstable_files_.push_back(sstable_file);
+
+    // Clear Immutable MemTable
+    imm_memtable_.reset();
+
+    return Status::OK();
+}
+
+Status DB::GetFromSSTable(const std::string& key, std::string* value) {
+    // Search SSTables in reverse order (newer files first)
+    for (auto it = sstable_files_.rbegin(); it != sstable_files_.rend(); ++it) {
+        sstable::SSTableReader reader(*it);
+        Status s = reader.Open();
+        if (!s.ok()) {
+            continue;  // Skip corrupted files
+        }
+
+        s = reader.Get(key, value);
+        if (s.ok()) {
+            return Status::OK();
+        } else if (s.IsNotFound()) {
+            // Key might be deleted in this file, continue searching
+            continue;
+        } else {
+            // Error reading file, continue to next
+            continue;
+        }
+    }
+
+    return Status::NotFound();
 }
 
 Status DestroyDB(const std::string& name, const Options& options) {

@@ -7,6 +7,7 @@ add_subdirectory(wal)
 add_subdirectory(iterator)
 add_subdirectory(batch)
 add_subdirectory(memtable)
+add_subdirectory(sstable)
 add_subdirectory(core)
 
 # Create the main library that aggregates all modules
@@ -20,6 +21,8 @@ target_link_libraries(kv_lib
         wal_lib
         iterator_lib
         batch_lib
+        memtable_lib
+        sstable_lib
         core_lib
 )
 

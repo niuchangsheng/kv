@@ -8,8 +8,9 @@ find_package(GTest REQUIRED)
 add_subdirectory(common)
 add_subdirectory(iterator)
 add_subdirectory(batch)
-add_subdirectory(memtable)
 add_subdirectory(wal)
+add_subdirectory(memtable)
+add_subdirectory(sstable)
 add_subdirectory(core)
 
 # Benchmark executable (not a unit test)
@@ -69,6 +70,11 @@ add_test(
 add_test(
     NAME test_wal
     COMMAND test_wal
+)
+
+add_test(
+    NAME test_sstable
+    COMMAND test_sstable
 )
 
 # Register the data correctness test (optional, as it's long-running)

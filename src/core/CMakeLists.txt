@@ -16,7 +16,7 @@ target_include_directories(core_lib
         ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-# Core depends on common, iterator, batch, wal, and memtable
+# Core depends on common, iterator, batch, wal, memtable, and sstable
 target_link_libraries(core_lib
     PUBLIC
         common_lib
@@ -24,4 +24,5 @@ target_link_libraries(core_lib
         iterator_lib
         batch_lib
         memtable_lib
+        sstable_lib
 )
